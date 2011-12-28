@@ -109,6 +109,12 @@ public class DescribeCommandTest extends RepositoryTestCase {
 			throws Exception {
 		Git git = Git.wrap(db);
 
+		/*
+		 * XXX: Technically, this test might fail intermittently, only very
+		 * rarely, if the repo created to test happened to have objects which
+		 * conflict by more than 2 letters (as then, the abbreviate method might
+		 * return more than 2 letters even when called with a length of 2).
+		 */
 		writeTrashFile("Test.txt", "Hello world");
 		git.add().addFilepattern("Test.txt").call();
 		RevCommit initialCommit = git.commit().setMessage("initial commit")
@@ -164,4 +170,100 @@ public class DescribeCommandTest extends RepositoryTestCase {
 		}
 	}
 
+	@Test
+	public void testDescribeCommandAfterMerge() throws Exception {
+        /*
+         * This test confirms that describe behaves the same as cgit's describe.
+         *
+         * For the following tree:
+         *      * E
+         *    / |
+         *    * | D
+         *    * | C
+         *    | * B
+         *     \|
+         *      * A (TEST)
+         *
+         * If commit A is labeled as "TEST", then git-describe returns the following:
+         * A: TEST
+         * B: TEST-1-...
+         * C: TEST-1-...
+         * D: TEST-2-...
+         * E: TEST-4-...
+         *
+         * NOTE: eclipse auto-format ruins this comment.  Please do not commit edits
+         * which ruin this comment.
+         */
+
+		Git git = Git.wrap(db);
+
+		writeTrashFile("File_A.txt", "Hello world");
+		git.add().addFilepattern("File_A").call();
+		RevCommit commitA = git.commit().setMessage("Commit A")
+				.call();
+		git.branchCreate().setName("A").call();
+
+		git.tag()
+				.setName("TEST")
+				.setObjectId(commitA)
+				.setTagger(
+						new PersonIdent("Test Tagger", "tagger@example.coml"))
+				.setMessage("Tag to test DescribeCommand").call();
+
+		git.branchCreate().setName("B").call();
+		writeTrashFile("File_B.txt", "Hello world");
+		git.add().addFilepattern("File_B.txt").call();
+		RevCommit secondCommit = git.commit().setMessage("Commit B").call();
+
+		git.checkout().setName("A").call();
+
+		git.branchCreate().setName("C").call();
+		writeTrashFile("File_C.txt", "Hello world");
+		git.add().addFilepattern("File_C.txt").call();
+		RevCommit thirdCommit = git.commit().setMessage("Commit C").call();
+
+		git.branchCreate().setName("D").call();
+		writeTrashFile("File_D.txt", "Hello world");
+		git.add().addFilepattern("File_D.txt").call();
+		RevCommit fourthCommit = git.commit().setMessage("Commit D").call();
+
+		git.checkout().setName("B").call();
+
+		git.branchCreate().setName("E").call();
+		git.merge().include(fourthCommit).call();
+		RevCommit fifthCommit = git.commit().setMessage("Commit B+D=E").call();
+
+		String defaultAbbreviationLength = Integer.toString(DescribeCommand
+				.getDefaultAbbreviationLength());
+
+		{
+			String actual = git.describe().setObjectId(secondCommit).call();
+			String expectedRegex = "TEST-1-g[0-9a-f]{"
+					+ defaultAbbreviationLength + "}";
+			assertTrue("Describe String matches expected regex",
+					actual.matches(expectedRegex));
+		}
+		{
+			String actual = git.describe().setObjectId(thirdCommit).call();
+			String expectedRegex = "TEST-1-g[0-9a-f]{"
+					+ defaultAbbreviationLength + "}";
+			assertTrue("Describe String matches expected regex",
+					actual.matches(expectedRegex));
+		}
+		{
+			String actual = git.describe().setObjectId(fourthCommit).call();
+			String expectedRegex = "TEST-2-g[0-9a-f]{"
+					+ defaultAbbreviationLength + "}";
+			assertTrue("Describe String matches expected regex",
+					actual.matches(expectedRegex));
+		}
+		{
+			String actual = git.describe().setObjectId(fifthCommit).call();
+			String expectedRegex = "TEST-4-g[0-9a-f]{"
+					+ defaultAbbreviationLength
+				+ "}";
+			assertTrue("Describe String matches expected regex",
+					actual.matches(expectedRegex));
+		}
+	}
 }

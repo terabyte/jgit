@@ -57,6 +57,7 @@ import org.eclipse.jgit.lib.Ref;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevObject;
+import org.eclipse.jgit.revwalk.RevSort;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.revwalk.filter.RevFilter;
 import org.eclipse.jgit.treewalk.filter.TreeFilter;
@@ -100,7 +101,7 @@ public class DescribeCommand extends GitCommand<String> {
 
 	/**
 	 * Set the length of hash abbreviation.
-	 * 
+	 *
 	 * @param abbrev
 	 *            length to abbreviate commands to.
 	 * @return a reference to {@code this}, allows chaining calls
@@ -161,7 +162,7 @@ public class DescribeCommand extends GitCommand<String> {
 					// This tag does exist in the history, so count the number of
 					// commits since it
 
-					int i = countCommits(tip.getId(), base.getId());
+					int i = countCommits(w, tip.getId(), base.getId());
 					if (shortestLengthSoFar == null) {
 						// found, and first
 						shortestLengthSoFar = i;
@@ -207,32 +208,32 @@ public class DescribeCommand extends GitCommand<String> {
 	 * This method counts the number of commits that are parents of the given
 	 * commit.
 	 *
-	 * Because REvCommit objects must be created by the same RevWalk object,
+	 * Because RevCommit objects must be created by the same RevWalk object,
 	 * ObjectIds are passed in instead of RevCommit objects. Don't screw that
 	 * up!
 	 *
+     * @param w
+     *            RevWalk object to use (object is reset first)
 	 * @param tip
 	 *            starting commit
 	 * @param end
-	 *            Stoping commit
+	 *            ending commit
 	 * @return count of commits in the history of the given object
 	 * @throws IOException
 	 * @throws IncorrectObjectTypeException
 	 * @throws MissingObjectException
 	 */
-	private int countCommits(final ObjectId tip, final ObjectId end)
+	private int countCommits(RevWalk w, final ObjectId tip, final ObjectId end)
 			throws MissingObjectException, IncorrectObjectTypeException,
 			IOException {
-		RevWalk w = new RevWalk(repo);
 		w.reset();
+        w.sort(RevSort.TOPO);
 		w.setRevFilter(RevFilter.ALL);
 		w.setTreeFilter(TreeFilter.ALL);
 		w.markStart(w.parseCommit(tip));
 		w.markUninteresting(w.parseCommit(end));
 		int count = 0;
-		while (w.next() != null) {
-			++count;
-		}
+		while (w.next() != null) ++count;
 		return count;
 	}
 
