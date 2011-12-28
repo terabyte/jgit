@@ -1,7 +1,5 @@
 /*
- * Copyright (C) 2008, Jonas Fonseca <fonseca@diku.dk>
- * Copyright (C) 2008, Robin Rosenberg <robin.rosenberg@dewire.com>
- * Copyright (C) 2008, Shawn O. Pearce <spearce@spearce.org>
+ * Copyright (C) 2012, Carl Myers <cmyers@cmyers.org>
  * and other copyright owners as documented in the project's IP log.
  *
  * This program and the accompanying materials are made available

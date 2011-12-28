@@ -275,7 +275,7 @@ public class Git {
 
 	/**
 	 * Returns a command object to execute a {@code Describe} command
-	 * 
+	 *
 	 * @see <a
 	 *      href="http://www.kernel.org/pub/software/scm/git/docs/git-describe.html"
 	 *      >Git documentation about Describe</a>

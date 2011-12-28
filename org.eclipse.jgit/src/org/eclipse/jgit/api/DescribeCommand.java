@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010, Christian Halstrick <christian.halstrick@sap.com>
+ * Copyright (C) 2012, Carl Myers <cmyers@cmyers.org>
  * and other copyright owners as documented in the project's IP log.
  *
  * This program and the accompanying materials are made available
@@ -46,6 +46,7 @@ import java.io.IOException;
 import java.util.Map;
 import java.util.Map.Entry;
 
+import org.eclipse.jgit.JGitText;
 import org.eclipse.jgit.api.errors.JGitInternalException;
 import org.eclipse.jgit.api.errors.NoHeadException;
 import org.eclipse.jgit.errors.IncorrectObjectTypeException;
@@ -77,7 +78,7 @@ import org.eclipse.jgit.treewalk.filter.TreeFilter;
  *      >Git documentation about Describe</a>
  */
 public class DescribeCommand extends GitCommand<String> {
-	// seems to be the default for git
+	// this is the default for git
 	private static final int DEFAULT_ABBREVIATION_LENGTH = 7;
 
 	private int abbreviationLength;
@@ -89,16 +90,31 @@ public class DescribeCommand extends GitCommand<String> {
 	protected DescribeCommand(Repository repo) {
 		super(repo);
 		abbreviationLength = DEFAULT_ABBREVIATION_LENGTH;
+		// Use HEAD by default (mirrors cgit impl)
+		try {
+			oid = repo.resolve("HEAD");
+		} catch (IOException e) {
+			// Ignored, will throw if oid not set before call()
+		}
 	}
 
 	/**
 	 * Set the length of hash abbreviation.
-	 *
+	 * 
 	 * @param abbrev
 	 *            length to abbreviate commands to.
+	 * @return a reference to {@code this}, allows chaining calls
+	 * @throws IllegalArgumentException
 	 */
-	public void setAbbrev(final int abbrev) {
+	public DescribeCommand setAbbrev(final int abbrev)
+			throws IllegalArgumentException {
+		checkCallable();
+		if (abbrev < 0 || abbrev == 1 || abbrev > 40) {
+			throw new IllegalArgumentException(
+					JGitText.get().describeInvalidAbbreviation);
+		}
 		this.abbreviationLength = abbrev;
+		return this;
 	}
 
 	/**
@@ -113,63 +129,78 @@ public class DescribeCommand extends GitCommand<String> {
 	public String call() throws NoHeadException, JGitInternalException {
 		checkCallable();
 
+		if (oid == null) {
+			throw new JGitInternalException(
+					JGitText.get().describeObjectIdNotSet,
+					new NullPointerException());
+		}
+
 		RevWalk w = new RevWalk(repo);
-		String tagName = null;
-		Map<String, Ref> allTags = repo.getTags();
-		Integer shortestLengthSoFar = null;
-		for (Entry<String, Ref> tag : allTags.entrySet()) {
+		try {
+			String tagName = null;
+			Map<String, Ref> allTags = repo.getTags();
+			Integer shortestLengthSoFar = null;
+			for (Entry<String, Ref> tag : allTags.entrySet()) {
 
-			RevCommit base;
-			RevCommit tip;
-			try {
-				RevObject ro = w.parseCommit(w.parseTag(
-						tag.getValue().getObjectId()).getObject());
-				if (ro.getType() != Constants.OBJ_COMMIT) {
-					// must be a commit object or doesn't make sense.
+				RevCommit base;
+				RevCommit tip;
+				try {
+					RevObject ro = w.parseCommit(w.parseTag(
+							tag.getValue().getObjectId()).getObject());
+					if (ro.getType() != Constants.OBJ_COMMIT) {
+						// must be a commit object or doesn't make sense.
+						continue;
+					}
+					base = w.parseCommit(ro.getId());
+					tip = w.parseCommit(oid);
+
+					if (!w.isMergedInto(base, tip)) {
+						// this tag doesn't exist in this commit's history
+						continue;
+					}
+					// This tag does exist in the history, so count the number of
+					// commits since it
+
+					int i = countCommits(tip.getId(), base.getId());
+					if (shortestLengthSoFar == null) {
+						// found, and first
+						shortestLengthSoFar = i;
+						tagName = tag.getKey();
+					}
+					if (shortestLengthSoFar > i) {
+						shortestLengthSoFar = i;
+						tagName = tag.getKey();
+					}
+
+				} catch (IncorrectObjectTypeException e) {
+					// Not a "real" error - just means there was an object tagged
+					// which wasn't a commit - the correct thing to do here is
+					// ignore it.
 					continue;
 				}
-				base = w.parseCommit(ro.getId());
-				tip = w.parseCommit(oid);
-
-				if (!w.isMergedInto(base, tip)) {
-					// this tag doesn't exist in this commit's history
-					continue;
-				}
-				// This tag does exist in the history, so count the number of
-				// commits since it
-
-				int i = countCommits(tip.getId(), base.getId());
-				if (shortestLengthSoFar == null) {
-					// found, and first
-					shortestLengthSoFar = i;
-					tagName = tag.getKey();
-				}
-				if (shortestLengthSoFar > i) {
-					shortestLengthSoFar = i;
-					tagName = tag.getKey();
-				}
-
-			} catch (MissingObjectException e) {
-				e.printStackTrace();
-				continue;
-			} catch (IncorrectObjectTypeException e) {
-				// Not a "real" error - just means there was an object tagged
-				// which wasn't a commit - the correct thing to do here is
-				// ignore it.
-				continue;
-			} catch (IOException e) {
-				e.printStackTrace();
-				continue;
 			}
-		}
-		if (shortestLengthSoFar == null) {
-			// not found
+			if (shortestLengthSoFar == null) {
+				// not found
+				return null;
+			}
+			if (shortestLengthSoFar.equals(0) || abbreviationLength == 0) {
+				return tagName;
+			}
+			return tagName + "-" + shortestLengthSoFar.toString() + "-" + "g"
+					+ repo.getObjectDatabase().newReader()
+							.abbreviate(oid, abbreviationLength).name();
+		} catch (MissingObjectException e) {
+			throw new JGitInternalException(
+					JGitText.get().exceptionCaughtDuringExecutionOfDescribeCommand,
+					e);
+		} catch (IOException e) {
+			throw new JGitInternalException(
+					JGitText.get().exceptionCaughtDuringExecutionOfDescribeCommand,
+					e);
+		} finally {
 			setCallable(false);
-			return null;
+			w.release();
 		}
-		setCallable(false);
-		return tagName + "-" + shortestLengthSoFar.toString() + "-" + "g"
-				+ oid.abbreviate(abbreviationLength).name();
 	}
 
 	/**
@@ -216,8 +247,19 @@ public class DescribeCommand extends GitCommand<String> {
 	 * Set the object id to run describe for.
 	 *
 	 * @param oid
+	 * @return this object, for chaining calls
 	 */
-	public void setObjectId(ObjectId oid) {
+	public DescribeCommand setObjectId(ObjectId oid) {
 		this.oid = oid;
+		return this;
+	}
+
+	/**
+	 * Returns the default abbreviation length
+	 *
+	 * @return default abbreviation length
+	 */
+	public static int getDefaultAbbreviationLength() {
+		return DEFAULT_ABBREVIATION_LENGTH;
 	}
 }
