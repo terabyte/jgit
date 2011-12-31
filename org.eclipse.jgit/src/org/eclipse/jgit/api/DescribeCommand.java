@@ -43,24 +43,25 @@
 package org.eclipse.jgit.api;
 
 import java.io.IOException;
+import java.lang.reflect.Array;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 
 import org.eclipse.jgit.JGitText;
 import org.eclipse.jgit.api.errors.JGitInternalException;
 import org.eclipse.jgit.api.errors.NoHeadException;
-import org.eclipse.jgit.errors.IncorrectObjectTypeException;
 import org.eclipse.jgit.errors.MissingObjectException;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Ref;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
-import org.eclipse.jgit.revwalk.RevObject;
+import org.eclipse.jgit.revwalk.RevFlag;
 import org.eclipse.jgit.revwalk.RevSort;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.revwalk.filter.RevFilter;
-import org.eclipse.jgit.treewalk.filter.TreeFilter;
 
 /**
  * A class used to execute a {@code Describe} command. It has setters for all
@@ -129,6 +130,7 @@ public class DescribeCommand extends GitCommand<String> {
 	 */
 	public String call() throws NoHeadException, JGitInternalException {
 		checkCallable();
+		setCallable(false);
 
 		if (oid == null) {
 			throw new JGitInternalException(
@@ -137,57 +139,77 @@ public class DescribeCommand extends GitCommand<String> {
 		}
 
 		RevWalk w = new RevWalk(repo);
+        Map<RevCommit, List<String>> tagLookup = new HashMap<RevCommit, List<String>>();
 		try {
-			String tagName = null;
-			Map<String, Ref> allTags = repo.getTags();
-			Integer shortestLengthSoFar = null;
-			for (Entry<String, Ref> tag : allTags.entrySet()) {
+            RevFlag f = w.newFlag("wanted");
+            for (Ref tag : repo.getTags().values()) {
+                // Tags can point to non-commits - skip those
+                if (w.parseCommit(tag.getObjectId()).getType() != Constants.OBJ_COMMIT)
+                	continue;
+                RevCommit rc = w.parseCommit(tag.getObjectId());
+                rc.add(f);
+                String fullTagName = tag.getName();
+                String[] tagParts = fullTagName.split("/");
+                String tagName = tagParts[Array.getLength(tagParts)-1];
+                if (tagLookup.containsKey(rc)) {
+                	tagLookup.get(rc).add(tagName);
+                } else {
+                	List<String> l = new ArrayList<String>();
+                	l.add(tagName);
+                    tagLookup.put(rc, l);
+                }
+            }
 
-				RevCommit base;
-				RevCommit tip;
-				try {
-					RevObject ro = w.parseCommit(w.parseTag(
-							tag.getValue().getObjectId()).getObject());
-					if (ro.getType() != Constants.OBJ_COMMIT) {
-						// must be a commit object or doesn't make sense.
-						continue;
-					}
-					base = w.parseCommit(ro.getId());
-					tip = w.parseCommit(oid);
+            RevCommit start = w.parseCommit(oid);
+            RevCommit candidate = null;
+            int candidateDistance = 0;
 
-					if (!w.isMergedInto(base, tip)) {
-						// this tag doesn't exist in this commit's history
-						continue;
-					}
-					// This tag does exist in the history, so count the number of
-					// commits since it
+            w.markStart(start);
+            w.setRevFilter(RevFilter.ALL);
+            w.sort(RevSort.TOPO);
+            RevCommit r = null;
+            while ((r = w.next()) != null) {
+                // Debug output
+            	System.out.println("Processing commit " + r.toString() + " message '" + r.getShortMessage() + "'");
+            	if (r.has(f)) {
+            		candidate = r;
+                    System.out.println("Marking uninteresting: " + w.parseCommit(r).toString());
+                    w.markUninteresting(w.parseCommit(r));
+            	}
+                ++candidateDistance;
+            }
 
-					int i = countCommits(w, tip.getId(), base.getId());
-					if (shortestLengthSoFar == null) {
-						// found, and first
-						shortestLengthSoFar = i;
-						tagName = tag.getKey();
-					}
-					if (shortestLengthSoFar > i) {
-						shortestLengthSoFar = i;
-						tagName = tag.getKey();
-					}
-
-				} catch (IncorrectObjectTypeException e) {
-					// Not a "real" error - just means there was an object tagged
-					// which wasn't a commit - the correct thing to do here is
-					// ignore it.
-					continue;
-				}
-			}
-			if (shortestLengthSoFar == null) {
+			if (candidate == null) {
 				// not found
 				return null;
 			}
-			if (shortestLengthSoFar.equals(0) || abbreviationLength == 0) {
+
+			// Determine tag name - if there happens to be more than one tag at
+			// the same commit, use the one with the most recent date.  This is
+			// what cgit does.
+            /*
+			List<String> tags = new ArrayList<String>();
+            for (Map.Entry<String, Ref> e : repo.getTags().entrySet()) {
+            	if (e.getValue().getTarget().getObjectId().equals(candidate.getId())) {
+            		tags.add(e.getValue().getName());
+            	}
+            }
+            */
+
+            if (!tagLookup.containsKey(candidate) || tagLookup.get(candidate).size() == 0) {
+    			throw new JGitInternalException(
+    					JGitText.get().exceptionCaughtDuringExecutionOfDescribeCommand,
+    					new IllegalStateException("No tag matched tag found during revwalk"));
+            }
+
+            // TODO: handle multiple tag case properly
+
+            String tagName = tagLookup.get(candidate).get(0);
+
+			if (candidateDistance == 1 || abbreviationLength == 0) {
 				return tagName;
 			}
-			return tagName + "-" + shortestLengthSoFar.toString() + "-" + "g"
+			return tagName + "-" + Integer.toString(candidateDistance-1) + "-" + "g"
 					+ repo.getObjectDatabase().newReader()
 							.abbreviate(oid, abbreviationLength).name();
 		} catch (MissingObjectException e) {
@@ -199,42 +221,8 @@ public class DescribeCommand extends GitCommand<String> {
 					JGitText.get().exceptionCaughtDuringExecutionOfDescribeCommand,
 					e);
 		} finally {
-			setCallable(false);
 			w.release();
 		}
-	}
-
-	/**
-	 * This method counts the number of commits that are parents of the given
-	 * commit.
-	 *
-	 * Because RevCommit objects must be created by the same RevWalk object,
-	 * ObjectIds are passed in instead of RevCommit objects. Don't screw that
-	 * up!
-	 *
-     * @param w
-     *            RevWalk object to use (object is reset first)
-	 * @param tip
-	 *            starting commit
-	 * @param end
-	 *            ending commit
-	 * @return count of commits in the history of the given object
-	 * @throws IOException
-	 * @throws IncorrectObjectTypeException
-	 * @throws MissingObjectException
-	 */
-	private int countCommits(RevWalk w, final ObjectId tip, final ObjectId end)
-			throws MissingObjectException, IncorrectObjectTypeException,
-			IOException {
-		w.reset();
-        w.sort(RevSort.TOPO);
-		w.setRevFilter(RevFilter.ALL);
-		w.setTreeFilter(TreeFilter.ALL);
-		w.markStart(w.parseCommit(tip));
-		w.markUninteresting(w.parseCommit(end));
-		int count = 0;
-		while (w.next() != null) ++count;
-		return count;
 	}
 
 	/**
