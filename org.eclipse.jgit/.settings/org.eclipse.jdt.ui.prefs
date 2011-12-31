@@ -1,4 +1,4 @@
-#Thu Aug 26 12:29:47 CDT 2010
+#Wed Dec 28 13:01:14 PST 2011
 eclipse.preferences.version=1
 editor_save_participant_org.eclipse.jdt.ui.postsavelistener.cleanup=true
 formatter_profile=_JGit Format
@@ -23,7 +23,7 @@ sp_cleanup.always_use_this_for_non_static_field_access=false
 sp_cleanup.always_use_this_for_non_static_method_access=false
 sp_cleanup.convert_to_enhanced_for_loop=false
 sp_cleanup.correct_indentation=false
-sp_cleanup.format_source_code=true
+sp_cleanup.format_source_code=false
 sp_cleanup.format_source_code_changes_only=true
 sp_cleanup.make_local_variable_final=false
 sp_cleanup.make_parameters_final=false
