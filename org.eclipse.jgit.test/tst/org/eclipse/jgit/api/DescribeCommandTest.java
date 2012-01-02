@@ -241,13 +241,6 @@ public class DescribeCommandTest extends RepositoryTestCase {
 		String defaultAbbreviationLength = Integer.toString(DescribeCommand
 				.getDefaultAbbreviationLength());
 
-        System.out.println("Commits: \n"
- + "\tA: " + commitA.toString() + "\n"
-				+ "\tB: " + secondCommit.toString() + "\n" + "\tC: "
-				+ thirdCommit.toString() + "\n" + "\tD: "
-				+ fourthCommit.toString() + "\n" + "\tE: "
-				+ fifthCommit.toString() + "\n");
-		System.out.println("Testing Second Commit");
 		{
 			String actual = git.describe().setObjectId(secondCommit).call();
 			String expectedRegex = "TEST-1-g[0-9a-f]{"
@@ -255,7 +248,6 @@ public class DescribeCommandTest extends RepositoryTestCase {
 			assertTrue("Describe String matches expected regex",
 					actual.matches(expectedRegex));
 		}
-		System.out.println("Testing Third Commit");
 		{
 			String actual = git.describe().setObjectId(thirdCommit).call();
 			String expectedRegex = "TEST-1-g[0-9a-f]{"
@@ -263,7 +255,6 @@ public class DescribeCommandTest extends RepositoryTestCase {
 			assertTrue("Describe String matches expected regex",
 					actual.matches(expectedRegex));
 		}
-		System.out.println("Testing Fourth Commit");
 		{
 			String actual = git.describe().setObjectId(fourthCommit).call();
 			String expectedRegex = "TEST-2-g[0-9a-f]{"
@@ -271,7 +262,6 @@ public class DescribeCommandTest extends RepositoryTestCase {
 			assertTrue("Describe String matches expected regex",
 					actual.matches(expectedRegex));
 		}
-		System.out.println("Testing Fifth Commit");
 		{
 			String actual = git.describe().setObjectId(fifthCommit).call();
 			String expectedRegex = "TEST-4-g[0-9a-f]{"

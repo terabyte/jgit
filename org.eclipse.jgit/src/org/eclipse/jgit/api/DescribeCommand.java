@@ -169,11 +169,8 @@ public class DescribeCommand extends GitCommand<String> {
             w.sort(RevSort.TOPO);
             RevCommit r = null;
             while ((r = w.next()) != null) {
-                // Debug output
-            	System.out.println("Processing commit " + r.toString() + " message '" + r.getShortMessage() + "'");
             	if (r.has(f)) {
             		candidate = r;
-                    System.out.println("Marking uninteresting: " + w.parseCommit(r).toString());
                     w.markUninteresting(w.parseCommit(r));
             	}
                 ++candidateDistance;
@@ -187,7 +184,7 @@ public class DescribeCommand extends GitCommand<String> {
 			// Determine tag name - if there happens to be more than one tag at
 			// the same commit, use the one with the most recent date.  This is
 			// what cgit does.
-            /*
+			/*
 			List<String> tags = new ArrayList<String>();
             for (Map.Entry<String, Ref> e : repo.getTags().entrySet()) {
             	if (e.getValue().getTarget().getObjectId().equals(candidate.getId())) {
@@ -203,7 +200,6 @@ public class DescribeCommand extends GitCommand<String> {
             }
 
             // TODO: handle multiple tag case properly
-
             String tagName = tagLookup.get(candidate).get(0);
 
 			if (candidateDistance == 1 || abbreviationLength == 0) {
