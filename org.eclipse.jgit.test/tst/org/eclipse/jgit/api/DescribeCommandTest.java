@@ -199,7 +199,7 @@ public class DescribeCommandTest extends RepositoryTestCase {
 		Git git = Git.wrap(db);
 
 		writeTrashFile("File_A.txt", "Hello world");
-		git.add().addFilepattern("File_A").call();
+		git.add().addFilepattern("File_A.txt").call();
 		RevCommit commitA = git.commit().setMessage("Commit A")
 				.call();
 		git.branchCreate().setName("A").call();
@@ -220,11 +220,13 @@ public class DescribeCommandTest extends RepositoryTestCase {
 		git.checkout().setName("A").call();
 
 		git.branchCreate().setName("C").call();
+		git.checkout().setName("C").call();
 		writeTrashFile("File_C.txt", "Hello world");
 		git.add().addFilepattern("File_C.txt").call();
 		RevCommit thirdCommit = git.commit().setMessage("Commit C").call();
 
 		git.branchCreate().setName("D").call();
+		git.checkout().setName("D").call();
 		writeTrashFile("File_D.txt", "Hello world");
 		git.add().addFilepattern("File_D.txt").call();
 		RevCommit fourthCommit = git.commit().setMessage("Commit D").call();
@@ -232,6 +234,7 @@ public class DescribeCommandTest extends RepositoryTestCase {
 		git.checkout().setName("B").call();
 
 		git.branchCreate().setName("E").call();
+		git.checkout().setName("E").call();
 		MergeResult mr = git.merge().include(fourthCommit).call();
 
 		RevWalk w = new RevWalk(db);
