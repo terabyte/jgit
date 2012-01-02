@@ -48,6 +48,7 @@ import static org.junit.Assert.assertTrue;
 import org.eclipse.jgit.lib.PersonIdent;
 import org.eclipse.jgit.lib.RepositoryTestCase;
 import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.revwalk.RevWalk;
 import org.junit.Test;
 
 public class DescribeCommandTest extends RepositoryTestCase {
@@ -211,6 +212,7 @@ public class DescribeCommandTest extends RepositoryTestCase {
 				.setMessage("Tag to test DescribeCommand").call();
 
 		git.branchCreate().setName("B").call();
+		git.checkout().setName("B").call();
 		writeTrashFile("File_B.txt", "Hello world");
 		git.add().addFilepattern("File_B.txt").call();
 		RevCommit secondCommit = git.commit().setMessage("Commit B").call();
@@ -230,8 +232,11 @@ public class DescribeCommandTest extends RepositoryTestCase {
 		git.checkout().setName("B").call();
 
 		git.branchCreate().setName("E").call();
-		git.merge().include(fourthCommit).call();
-		RevCommit fifthCommit = git.commit().setMessage("Commit B+D=E").call();
+		MergeResult mr = git.merge().include(fourthCommit).call();
+
+		RevWalk w = new RevWalk(db);
+		RevCommit fifthCommit = w.parseCommit(mr.getNewHead());
+		w.release();
 
 		String defaultAbbreviationLength = Integer.toString(DescribeCommand
 				.getDefaultAbbreviationLength());
