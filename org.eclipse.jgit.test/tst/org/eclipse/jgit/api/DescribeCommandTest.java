@@ -273,5 +273,14 @@ public class DescribeCommandTest extends RepositoryTestCase {
 			assertTrue("Describe String matches expected regex",
 					actual.matches(expectedRegex));
 		}
+		/*
+		 * TODO: test that when there are multiple tags, the newest is picked.
+		 * The tag must be at least 1 second newer for this test and no matter
+		 * what I did (thread.sleep, etc) the second tag always had the same
+		 * time as the first tag, making that test difficult to write.
+		 */
+
+
+
 	}
 }

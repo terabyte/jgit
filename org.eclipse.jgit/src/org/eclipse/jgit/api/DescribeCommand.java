@@ -184,23 +184,19 @@ public class DescribeCommand extends GitCommand<String> {
 			// Determine tag name - if there happens to be more than one tag at
 			// the same commit, use the one with the most recent date.  This is
 			// what cgit does.
-			/*
-			List<String> tags = new ArrayList<String>();
+			int age = 0;
+			String tagName = null;
             for (Map.Entry<String, Ref> e : repo.getTags().entrySet()) {
-            	if (e.getValue().getTarget().getObjectId().equals(candidate.getId())) {
-            		tags.add(e.getValue().getName());
+            	ObjectId thisOid = w.parseCommit(e.getValue().getObjectId());
+            	ObjectId candidateOid = candidate.getId();
+            	if (thisOid.equals(candidateOid)) {
+            		if (w.parseCommit(thisOid).getCommitTime() > age) {
+            			age = w.parseCommit(thisOid).getCommitTime();
+            			tagName = e.getKey();
+            		}
+
             	}
             }
-            */
-
-            if (!tagLookup.containsKey(candidate) || tagLookup.get(candidate).size() == 0) {
-    			throw new JGitInternalException(
-    					JGitText.get().exceptionCaughtDuringExecutionOfDescribeCommand,
-    					new IllegalStateException("No tag matched tag found during revwalk"));
-            }
-
-            // TODO: handle multiple tag case properly
-            String tagName = tagLookup.get(candidate).get(0);
 
 			if (candidateDistance == 1 || abbreviationLength == 0) {
 				return tagName;
