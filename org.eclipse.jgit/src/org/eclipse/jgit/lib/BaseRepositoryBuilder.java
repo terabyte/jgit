@@ -23,6 +23,7 @@ import static org.eclipse.jgit.lib.Constants.GIT_WORK_TREE_KEY;
 
 import java.io.File;
 import java.io.IOException;
+import java.security.AccessControlException;
 import java.text.MessageFormat;
 import java.util.Collection;
 import java.util.LinkedList;
@@ -377,45 +378,62 @@ public class BaseRepositoryBuilder<B extends BaseRepositoryBuilder, R extends Re
 	 */
 	public B readEnvironment(SystemReader sr) {
 		if (getGitDir() == null) {
-			String val = sr.getenv(GIT_DIR_KEY);
-			if (val != null)
-				setGitDir(new File(val));
+			try {
+				String val = sr.getenv(GIT_DIR_KEY);
+				if (val != null)
+					setGitDir(new File(val));
+			} catch (AccessControlException ignored) {
+			}
 		}
 
 		if (getObjectDirectory() == null) {
-			String val = sr.getenv(GIT_OBJECT_DIRECTORY_KEY);
-			if (val != null)
-				setObjectDirectory(new File(val));
+			try {
+				String val = sr.getenv(GIT_OBJECT_DIRECTORY_KEY);
+				if (val != null)
+					setObjectDirectory(new File(val));
+			} catch (AccessControlException ignored) {
+			}
 		}
 
 		if (getAlternateObjectDirectories() == null) {
-			String val = sr.getenv(GIT_ALTERNATE_OBJECT_DIRECTORIES_KEY);
-			if (val != null) {
-				for (String path : val.split(File.pathSeparator))
-					addAlternateObjectDirectory(new File(path));
+			try {
+				String val = sr.getenv(GIT_ALTERNATE_OBJECT_DIRECTORIES_KEY);
+				if (val != null) {
+					for (String path : val.split(File.pathSeparator))
+						addAlternateObjectDirectory(new File(path));
+				}
+			} catch (AccessControlException ignored) {
 			}
 		}
 
 		if (getWorkTree() == null) {
-			String val = sr.getenv(GIT_WORK_TREE_KEY);
-			if (val != null)
-				setWorkTree(new File(val));
-		}
-
-		if (getIndexFile() == null) {
-			String val = sr.getenv(GIT_INDEX_FILE_KEY);
-			if (val != null)
-				setIndexFile(new File(val));
-		}
-
-		if (ceilingDirectories == null) {
-			String val = sr.getenv(GIT_CEILING_DIRECTORIES_KEY);
-			if (val != null) {
-				for (String path : val.split(File.pathSeparator))
-					addCeilingDirectory(new File(path));
+			try {
+				String val = sr.getenv(GIT_WORK_TREE_KEY);
+				if (val != null)
+					setWorkTree(new File(val));
+			} catch (AccessControlException ignored) {
 			}
 		}
 
+		if (getIndexFile() == null) {
+			try {
+				String val = sr.getenv(GIT_INDEX_FILE_KEY);
+				if (val != null)
+					setIndexFile(new File(val));
+			} catch (AccessControlException ignored) {
+			}
+		}
+
+		if (ceilingDirectories == null) {
+			try {
+				String val = sr.getenv(GIT_CEILING_DIRECTORIES_KEY);
+				if (val != null) {
+					for (String path : val.split(File.pathSeparator))
+						addCeilingDirectory(new File(path));
+				}
+			} catch (AccessControlException ignored) {
+			}
+		}
 		return self();
 	}
 
