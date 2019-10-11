@@ -113,9 +113,11 @@ public class PushCommandTest extends RepositoryTestCase {
 
 			RefSpec spec = new RefSpec("refs/heads/master:refs/heads/x");
 			git1.push().setRemote("test").setRefSpecs(spec).call();
-			assertEquals("1:test, 2:" + uri + ", 3:\n" + "refs/heads/master "
+			//HOOKS ARE DISABLED
+			assertEquals("HookOutput should not exist since hooks are disabled", false, hookOutput.exists());
+			/*assertEquals("1:test, 2:" + uri + ", 3:\n" + "refs/heads/master "
 					+ commit.getName() + " refs/heads/x "
-					+ ObjectId.zeroId().name() + "\n", read(hookOutput));
+					+ ObjectId.zeroId().name() + "\n", read(hookOutput));*/
 		}
 	}
 
