@@ -27,7 +27,9 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
+import java.util.regex.Pattern;
 
 import org.eclipse.jgit.diff.DiffAlgorithm.SupportedAlgorithm;
 import org.eclipse.jgit.diff.DiffEntry.ChangeType;
@@ -112,6 +114,7 @@ public class DiffFormatter implements AutoCloseable {
 
 	private Repository repository;
 
+	private static final String EMPTY_STRING = "";
 	private Boolean quotePaths;
 
 	/**
@@ -690,6 +693,38 @@ public class DiffFormatter implements AutoCloseable {
 		for (DiffEntry ent : entries)
 			format(ent);
 	}
+
+	/**
+	 * Format the diff entries by filtering out the noise from the given delta filter pattern
+	 * The filter acts only for files that have MODIFY change Type.
+	 * If there are no changes detected, we will remove the diff entry.
+	 * @param entries
+	 * @param deltaFilterPattern
+	 * @throws IOException
+	 */
+
+	public void format(List<? extends DiffEntry> entries, Pattern deltaFilterPattern) throws IOException {
+		if (deltaFilterPattern == null) {
+			format(entries);
+			return;
+		}
+		Iterator<? extends DiffEntry> diIterator = entries.iterator();
+		while (diIterator.hasNext()) {
+			DiffEntry diffEntry = diIterator.next();
+			if (MODIFY.equals(diffEntry.changeType)) {
+				FormatResult res = createFormatResult(diffEntry);
+				String aContent = new String(res.a.content);
+				String bContent = new String(res.b.content);
+				aContent = deltaFilterPattern.matcher(aContent).replaceAll(EMPTY_STRING);
+				bContent = deltaFilterPattern.matcher(bContent).replaceAll(EMPTY_STRING);
+				if (!aContent.equals(bContent))
+					format(res.header, res.a, res.b);
+				else
+					diIterator.remove();
+			} else format(diffEntry);
+		}
+	}
+
 
 	/**
 	 * Format a patch script for one file entry.

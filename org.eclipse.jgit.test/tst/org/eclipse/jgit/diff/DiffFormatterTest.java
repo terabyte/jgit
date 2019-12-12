@@ -18,6 +18,7 @@ import static org.junit.Assert.assertTrue;
 import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.util.regex.Pattern;
 
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.Status;
@@ -388,6 +389,187 @@ public class DiffFormatterTest extends RepositoryTestCase {
 
 			assertEquals(expected, actual);
 		}
+	}
+
+	@Test
+	public void testDiffDeltaFilter_emptyFilter() throws Exception {
+		write(new File(db.getDirectory().getParent(), "test.txt"), "test");
+		File folder = new File(db.getDirectory().getParent(), "folder");
+		FileUtils.mkdir(folder);
+		write(new File(folder, "folder.txt"), "folder");
+		Git git = new Git(db);
+		git.add().addFilepattern(".").call();
+		git.commit().setMessage("Initial commit").call();
+		write(new File(folder, "folder.txt"), "folder change");
+
+		ByteArrayOutputStream os = new ByteArrayOutputStream();
+		DiffFormatter dfmt = new DiffFormatter(new SafeBufferedOutputStream(os));
+		dfmt.setRepository(db);
+		dfmt.setPathFilter(PathFilter.create("folder"));
+		DirCacheIterator oldTree = new DirCacheIterator(db.readDirCache());
+		FileTreeIterator newTree = new FileTreeIterator(db);
+
+		//testing an empty delta filter
+		Pattern deltaFilterPattern = Pattern.compile("");
+		dfmt.format(dfmt.scan(oldTree, newTree), deltaFilterPattern);
+		dfmt.flush();
+
+		String actual = os.toString("UTF-8");
+		String expected =
+				"diff --git a/folder/folder.txt b/folder/folder.txt\n"
+						+ "index 0119635..95c4c65 100644\n"
+						+ "--- a/folder/folder.txt\n" + "+++ b/folder/folder.txt\n"
+						+ "@@ -1 +1 @@\n" + "-folder\n"
+						+ "\\ No newline at end of file\n" + "+folder change\n"
+						+ "\\ No newline at end of file\n";
+
+		assertEquals(expected, actual);
+	}
+
+	@Test
+	/**
+	 * This is an ADD file, the file content matches the filter: diff unchanged.
+	 */
+	public void testDiffDeltaFilter_addFile() throws Exception {
+		write(new File(db.getDirectory().getParent(), "test.txt"), "test");
+		File folder = new File(db.getDirectory().getParent(), "folder");
+		FileUtils.mkdir(folder);
+		Git git = new Git(db);
+		git.add().addFilepattern(".").call();
+		git.commit().setMessage("Initial commit").call();
+		write(new File(folder, "folder.txt"), "change");
+
+		ByteArrayOutputStream os = new ByteArrayOutputStream();
+		DiffFormatter dfmt = new DiffFormatter(new SafeBufferedOutputStream(os));
+		dfmt.setRepository(db);
+		dfmt.setPathFilter(PathFilter.create("folder"));
+		DirCacheIterator oldTree = new DirCacheIterator(db.readDirCache());
+		FileTreeIterator newTree = new FileTreeIterator(db);
+
+		//testing a delta filter with one regex
+		Pattern deltaFilterPattern = Pattern.compile("change");
+		dfmt.format(dfmt.scan(oldTree, newTree), deltaFilterPattern);
+		dfmt.flush();
+
+		String actual = os.toString("UTF-8");
+		String expected =
+				"diff --git a/folder/folder.txt b/folder/folder.txt\n"
+						+ "new file mode 100644\n"
+						+ "index 0000000..8013df8\n"
+						+ "--- /dev/null\n"
+						+ "+++ b/folder/folder.txt\n"
+						+ "@@ -0,0 +1 @@\n"
+						+ "+change\n"
+						+ "\\ No newline at end of file\n";
+
+		assertEquals(expected, actual);
+	}
+
+	@Test
+	/**
+	 * This is an DELETE file, the file content matches the filter: diff unchanged.
+	 */
+	public void testDiffDeltaFilter_deleteFile() throws Exception {
+		write(new File(db.getDirectory().getParent(), "test.txt"), "test");
+		File folder = new File(db.getDirectory().getParent(), "folder");
+		FileUtils.mkdir(folder);
+		write(new File(folder, "folder.txt"), "change");
+		Git git = new Git(db);
+		git.add().addFilepattern(".").call();
+		git.commit().setMessage("Initial commit").call();
+		new File(folder, "folder.txt").delete();
+
+		ByteArrayOutputStream os = new ByteArrayOutputStream();
+		DiffFormatter dfmt = new DiffFormatter(new SafeBufferedOutputStream(os));
+		dfmt.setRepository(db);
+		dfmt.setPathFilter(PathFilter.create("folder"));
+		DirCacheIterator oldTree = new DirCacheIterator(db.readDirCache());
+		FileTreeIterator newTree = new FileTreeIterator(db);
+
+		//testing a delta filter with one regex
+		Pattern deltaFilterPattern = Pattern.compile("change");
+		dfmt.format(dfmt.scan(oldTree, newTree), deltaFilterPattern);
+		dfmt.flush();
+
+		String actual = os.toString("UTF-8");
+		String expected =
+				"diff --git a/folder/folder.txt b/folder/folder.txt\n"
+						+ "deleted file mode 100644\n"
+						+ "index 8013df8..0000000\n"
+						+ "--- a/folder/folder.txt\n"
+						+ "+++ /dev/null\n"
+						+ "@@ -1 +0,0 @@\n"
+						+ "-change\n"
+						+ "\\ No newline at end of file\n";
+
+		assertEquals(expected, actual);
+	}
+
+	@Test
+	/**
+	 * Filter for any file matches the content of the changed file: diff skipped.
+	 */
+	public void testDiffDeltaFilter_filteredModifiedFile() throws Exception {
+		write(new File(db.getDirectory().getParent(), "test.txt"), "test");
+		File folder = new File(db.getDirectory().getParent(), "folder");
+		FileUtils.mkdir(folder);
+		write(new File(folder, "folder.txt"), "folder");
+		Git git = new Git(db);
+		git.add().addFilepattern(".").call();
+		git.commit().setMessage("Initial commit").call();
+		write(new File(folder, "folder.txt"), "folderchange");
+
+		ByteArrayOutputStream os = new ByteArrayOutputStream();
+		DiffFormatter dfmt = new DiffFormatter(new SafeBufferedOutputStream(os));
+		dfmt.setRepository(db);
+		dfmt.setPathFilter(PathFilter.create("folder"));
+		DirCacheIterator oldTree = new DirCacheIterator(db.readDirCache());
+		FileTreeIterator newTree = new FileTreeIterator(db);
+
+		//testing a delta filter with one regex (ANY)
+		Pattern deltaFilterPattern = Pattern.compile("change");
+		dfmt.format(dfmt.scan(oldTree, newTree), deltaFilterPattern);
+		dfmt.flush();
+		
+		assertEquals("", os.toString("UTF-8"));
+	}
+
+	@Test
+	/**
+	 * The filter doesn't match any change: diff unchanged.
+	 */
+	public void testDiffDeltaFilter_filterNoMatch() throws Exception {
+		write(new File(db.getDirectory().getParent(), "test.txt"), "test");
+		File folder = new File(db.getDirectory().getParent(), "folder");
+		FileUtils.mkdir(folder);
+		write(new File(folder, "folder.txt"), "folder");
+		Git git = new Git(db);
+		git.add().addFilepattern(".").call();
+		git.commit().setMessage("Initial commit").call();
+		write(new File(folder, "folder.txt"), "folderchange");
+
+		ByteArrayOutputStream os = new ByteArrayOutputStream();
+		DiffFormatter dfmt = new DiffFormatter(new SafeBufferedOutputStream(os));
+		dfmt.setRepository(db);
+		dfmt.setPathFilter(PathFilter.create("folder"));
+		DirCacheIterator oldTree = new DirCacheIterator(db.readDirCache());
+		FileTreeIterator newTree = new FileTreeIterator(db);
+
+		//testing a delta filter with one regex (ANY)
+		Pattern deltaFilterPattern = Pattern.compile("xxxx");
+		dfmt.format(dfmt.scan(oldTree, newTree), deltaFilterPattern);
+		dfmt.flush();
+
+		String actual = os.toString("UTF-8");
+		String expected =
+				"diff --git a/folder/folder.txt b/folder/folder.txt\n"
+						+ "index 0119635..0b099ef 100644\n"
+						+ "--- a/folder/folder.txt\n" + "+++ b/folder/folder.txt\n"
+						+ "@@ -1 +1 @@\n" + "-folder\n"
+						+ "\\ No newline at end of file\n" + "+folderchange\n"
+						+ "\\ No newline at end of file\n";
+
+		assertEquals(expected, actual);
 	}
 
 	@Test
