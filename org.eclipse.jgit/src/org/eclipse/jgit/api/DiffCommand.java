@@ -15,7 +15,6 @@ import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.List;
-import java.util.Map;
 import java.util.regex.Pattern;
 
 import org.eclipse.jgit.api.errors.GitAPIException;
@@ -266,6 +265,10 @@ public class DiffCommand extends GitCommand<List<DiffEntry>> {
 		return this;
 	}
 
+	/**
+	 * Get deltaFilterPattern
+	 * @return deltaFilterPattern
+	 */
 	public Pattern getDeltaFilterPattern() {
 		return deltaFilterPattern;
 	}

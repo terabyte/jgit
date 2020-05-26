@@ -26,7 +26,6 @@ import org.eclipse.jgit.errors.MissingObjectException;
 import org.eclipse.jgit.hooks.PrePushHook;
 import org.eclipse.jgit.junit.JGitTestUtil;
 import org.eclipse.jgit.junit.RepositoryTestCase;
-import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Ref;
 import org.eclipse.jgit.lib.RefUpdate;
 import org.eclipse.jgit.lib.Repository;
@@ -109,7 +108,7 @@ public class PushCommandTest extends RepositoryTestCase {
 
 		try (Git git1 = new Git(db)) {
 			// create some refs via commits and tag
-			RevCommit commit = git1.commit().setMessage("initial commit").call();
+			git1.commit().setMessage("initial commit").call();
 
 			RefSpec spec = new RefSpec("refs/heads/master:refs/heads/x");
 			git1.push().setRemote("test").setRefSpecs(spec).call();
