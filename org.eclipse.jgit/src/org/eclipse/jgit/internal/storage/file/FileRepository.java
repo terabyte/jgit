@@ -159,7 +159,7 @@ public class FileRepository extends Repository {
 		super(options);
 		StoredConfig userConfig = null;
 		try {
-			userConfig = SystemReader.getInstance().getUserConfig();
+			userConfig = SystemReader.getInstance().getUserConfig(getFS());
 		} catch (ConfigInvalidException e) {
 			LOG.error(e.getMessage(), e);
 			throw new IOException(e.getMessage(), e);

@@ -162,7 +162,7 @@ public class MockSystemReader extends SystemReader {
 	/** {@inheritDoc} */
 	@Override
 	public FileBasedConfig openUserConfig(Config parent, FS fs) {
-		assert parent == null || parent == systemGitConfig;
+		assert parent == null || parent == systemGitConfig || parent instanceof FileBasedConfig;
 		return userGitConfig;
 	}
 

@@ -195,7 +195,7 @@ public class TransportGitSsh extends SshTransport implements PackTransport {
 
 	/**
 	 * Added a try/catch to return false if cannot access the environment variable.
-	 * @return
+	 * @return ture if environment variable GIT_SSH exists; false otherwise
 	 */
 	private static boolean useExtSession() {
 		try {
