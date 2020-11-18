@@ -30,6 +30,7 @@
   <properties>
     <translate-qualifier/>
     <source-bundle-manifest>${project.build.directory}/META-INF/SOURCE-MANIFEST.MF</source-bundle-manifest>
+    <maven.deploy.skip>true</maven.deploy.skip>
   </properties>
 
   <dependencies>
