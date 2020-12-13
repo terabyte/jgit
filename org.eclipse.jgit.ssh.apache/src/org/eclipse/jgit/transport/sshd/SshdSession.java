@@ -17,6 +17,7 @@ import java.io.OutputStream;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -32,6 +33,7 @@ import org.apache.sshd.client.subsystem.sftp.SftpClient;
 import org.apache.sshd.client.subsystem.sftp.SftpClient.CloseableHandle;
 import org.apache.sshd.client.subsystem.sftp.SftpClient.CopyMode;
 import org.apache.sshd.client.subsystem.sftp.SftpClientFactory;
+import org.apache.sshd.common.channel.PtyChannelConfiguration;
 import org.apache.sshd.common.session.Session;
 import org.apache.sshd.common.session.SessionListener;
 import org.apache.sshd.common.subsystem.sftp.SftpException;
@@ -132,7 +134,9 @@ public class SshdSession implements RemoteSession {
 	@Override
 	public Process exec(String commandName, int timeout) throws IOException {
 		@SuppressWarnings("resource")
-		ChannelExec exec = session.createExecChannel(commandName);
+		PtyChannelConfiguration config = new PtyChannelConfiguration();
+		config.setPtyType("dummy");
+		ChannelExec exec = session.createExecChannel(commandName, config, Collections.emptyMap());
 		if (timeout <= 0) {
 			try {
 				exec.open().verify();
