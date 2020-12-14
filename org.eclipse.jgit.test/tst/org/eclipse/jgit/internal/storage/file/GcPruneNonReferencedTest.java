@@ -10,6 +10,7 @@
 
 package org.eclipse.jgit.internal.storage.file;
 
+import static java.lang.Thread.sleep;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -59,7 +60,8 @@ public class GcPruneNonReferencedTest extends GcTestCase {
 		RevBlob a = tr.blob("a");
 		gc.setExpire(new Date(lastModified(a) + 1));
 
-		fsTick();
+		//fsTick();
+		sleep(1000);
 		RevBlob b = tr.blob("b");
 
 		gc.prune(Collections.<ObjectId> emptySet());
