@@ -29,6 +29,7 @@
 
   <properties>
     <maven.javadoc.skip>true</maven.javadoc.skip>
+    <eddsa-version>0.3.0</eddsa-version>
   </properties>
 
   <dependencies>
@@ -59,6 +60,12 @@
       <groupId>org.eclipse.jgit</groupId>
       <artifactId>org.eclipse.jgit.ssh.apache</artifactId>
       <version>${project.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>net.i2p.crypto</groupId>
+      <artifactId>eddsa</artifactId>
+      <version>${eddsa-version}</version>
     </dependency>
 
     <dependency>
