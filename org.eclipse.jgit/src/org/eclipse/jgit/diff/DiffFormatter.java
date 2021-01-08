@@ -725,6 +725,34 @@ public class DiffFormatter implements AutoCloseable {
 		}
 	}
 
+	/**
+	 * Format the diff entries by filtering out the noise from the given delta filter pattern
+	 * The filter acts only for files that have MODIFY change Type.
+	 * If there are no changes detected, we will remove the diff entry.
+	 * @param entries
+	 * @param deltaFilterPattern
+	 * @throws IOException
+	 */
+
+	public void filterHiddenFiles(List<? extends DiffEntry> entries, Pattern deltaFilterPattern) throws IOException {
+		if (deltaFilterPattern == null)
+			return;
+
+		Iterator<? extends DiffEntry> diIterator = entries.iterator();
+		while (diIterator.hasNext()) {
+			DiffEntry diffEntry = diIterator.next();
+			if (MODIFY.equals(diffEntry.changeType)) {
+				FormatResult res = createFormatResult(diffEntry);
+				String aContent = new String(res.a.content);
+				String bContent = new String(res.b.content);
+				aContent = deltaFilterPattern.matcher(aContent).replaceAll(EMPTY_STRING);
+				bContent = deltaFilterPattern.matcher(bContent).replaceAll(EMPTY_STRING);
+				if (aContent.equals(bContent))
+					diIterator.remove();
+			}
+		}
+	}
+
 
 	/**
 	 * Format a patch script for one file entry.

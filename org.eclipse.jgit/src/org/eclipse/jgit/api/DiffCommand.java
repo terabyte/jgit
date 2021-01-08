@@ -132,7 +132,7 @@ public class DiffCommand extends GitCommand<List<DiffEntry>> {
 			if (sourcePrefix != null) {
 				diffFmt.setOldPrefix(sourcePrefix);
 			}
-			diffFmt.format(result, this.getDeltaFilterPattern());
+			diffFmt.filterHiddenFiles(result, this.getDeltaFilterPattern());
 			diffFmt.flush();
 			return result;
 		} catch (IOException e) {
