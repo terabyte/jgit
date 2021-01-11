@@ -89,7 +89,9 @@ public class DiffCommand extends GitCommand<List<DiffEntry>> {
 	 * of the command. Don't call this method twice on an instance.
 	 *
 	 * Team-Devatscale SC customization to filter some files based on a regex pattern.
-	 * This filter will not be applied if showNameAndStatusOnly is set to true
+	 * This filter will not be applied if showNameAndStatusOnly is set to true and no
+	 * regex pattern is passed. Formatting is applied to all files returned by
+	 * DiffFormatter.scan() if showNameAndStatusOnly is false.
 	 */
 	@Override
 	public List<DiffEntry> call() throws GitAPIException {
@@ -120,9 +122,6 @@ public class DiffCommand extends GitCommand<List<DiffEntry>> {
 			diffFmt.setPathFilter(pathFilter);
 
 			List<DiffEntry> result = diffFmt.scan(oldTree, newTree);
-			if (showNameAndStatusOnly) {
-				return result;
-			}
 			if (contextLines >= 0) {
 				diffFmt.setContext(contextLines);
 			}
@@ -132,7 +131,16 @@ public class DiffCommand extends GitCommand<List<DiffEntry>> {
 			if (sourcePrefix != null) {
 				diffFmt.setOldPrefix(sourcePrefix);
 			}
-			diffFmt.filterHiddenFiles(result, this.getDeltaFilterPattern());
+
+			if (showNameAndStatusOnly) {
+				if (this.getDeltaFilterPattern() != null) {
+					diffFmt.filterModifiedFiles(result, this.getDeltaFilterPattern());
+					diffFmt.flush();
+				}
+				return result;
+			}
+
+			diffFmt.format(result, this.getDeltaFilterPattern());
 			diffFmt.flush();
 			return result;
 		} catch (IOException e) {

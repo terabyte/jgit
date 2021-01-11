@@ -734,7 +734,7 @@ public class DiffFormatter implements AutoCloseable {
 	 * @throws IOException
 	 */
 
-	public void filterHiddenFiles(List<? extends DiffEntry> entries, Pattern deltaFilterPattern) throws IOException {
+	public void filterModifiedFiles(List<? extends DiffEntry> entries, Pattern deltaFilterPattern) throws IOException {
 		if (deltaFilterPattern == null)
 			return;
 
