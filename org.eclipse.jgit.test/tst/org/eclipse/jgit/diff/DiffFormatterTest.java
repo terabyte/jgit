@@ -18,6 +18,7 @@ import static org.junit.Assert.assertTrue;
 import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.util.List;
 import java.util.regex.Pattern;
 
 import org.eclipse.jgit.api.Git;
@@ -536,6 +537,37 @@ public class DiffFormatterTest extends RepositoryTestCase {
 
 	@Test
 	/**
+	 * Filter for any file matches the content of the changed file without writing format changes: diff skipped.
+	 */
+	public void testDiffDeltaFilterModifyOnly_filteredModifiedFile() throws Exception {
+		write(new File(db.getDirectory().getParent(), "test.txt"), "test");
+		File folder = new File(db.getDirectory().getParent(), "folder");
+		FileUtils.mkdir(folder);
+		write(new File(folder, "folder.txt"), "folder");
+		Git git = new Git(db);
+		git.add().addFilepattern(".").call();
+		git.commit().setMessage("Initial commit").call();
+		write(new File(folder, "folder.txt"), "folderchange");
+
+		ByteArrayOutputStream os = new ByteArrayOutputStream();
+		DiffFormatter dfmt = new DiffFormatter(new BufferedOutputStream(os));
+		dfmt.setRepository(db);
+		dfmt.setPathFilter(PathFilter.create("folder"));
+		DirCacheIterator oldTree = new DirCacheIterator(db.readDirCache());
+		FileTreeIterator newTree = new FileTreeIterator(db);
+
+		//testing a delta filter with one regex (ANY)
+		Pattern deltaFilterPattern = Pattern.compile("change");
+
+		List<DiffEntry> result = dfmt.scan(oldTree, newTree);
+		dfmt.filterModifiedFiles(result, deltaFilterPattern);
+		dfmt.flush();
+
+		assertEquals(0, result.size());
+	}
+
+	@Test
+	/**
 	 * The filter doesn't match any change: diff unchanged.
 	 */
 	public void testDiffDeltaFilter_filterNoMatch() throws Exception {
@@ -570,6 +602,37 @@ public class DiffFormatterTest extends RepositoryTestCase {
 						+ "\\ No newline at end of file\n";
 
 		assertEquals(expected, actual);
+	}
+
+	@Test
+	/**
+	 * The filter doesn't match any change without writing format changes: diff unchanged.
+	 */
+	public void testDiffDeltaFilterModifyOnly_filterNoMatch() throws Exception {
+		write(new File(db.getDirectory().getParent(), "test.txt"), "test");
+		File folder = new File(db.getDirectory().getParent(), "folder");
+		FileUtils.mkdir(folder);
+		write(new File(folder, "folder.txt"), "folder");
+		Git git = new Git(db);
+		git.add().addFilepattern(".").call();
+		git.commit().setMessage("Initial commit").call();
+		write(new File(folder, "folder.txt"), "folderchange");
+
+		ByteArrayOutputStream os = new ByteArrayOutputStream();
+		DiffFormatter dfmt = new DiffFormatter(new BufferedOutputStream(os));
+		dfmt.setRepository(db);
+		dfmt.setPathFilter(PathFilter.create("folder"));
+		DirCacheIterator oldTree = new DirCacheIterator(db.readDirCache());
+		FileTreeIterator newTree = new FileTreeIterator(db);
+
+		//testing a delta filter with one regex (ANY)
+		Pattern deltaFilterPattern = Pattern.compile("xxxx");
+
+		List<DiffEntry> result = dfmt.scan(oldTree, newTree);
+		dfmt.filterModifiedFiles(dfmt.scan(oldTree, newTree), deltaFilterPattern);
+		dfmt.flush();
+
+		assertEquals(1, result.size());
 	}
 
 	@Test
