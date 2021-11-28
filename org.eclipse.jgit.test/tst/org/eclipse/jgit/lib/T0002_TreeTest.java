@@ -57,11 +57,13 @@ import java.util.List;
 
 import org.junit.Test;
 
+@SuppressWarnings("deprecation")
 public class T0002_TreeTest extends SampleDataRepositoryTestCase {
 	private static final ObjectId SOME_FAKE_ID = ObjectId.fromString(
 			"0123456789abcdef0123456789abcdef01234567");
 
-	private int compareNamesUsingSpecialCompare(String a,String b) throws UnsupportedEncodingException {
+	private static int compareNamesUsingSpecialCompare(String a, String b)
+			throws UnsupportedEncodingException {
 		char lasta = '\0';
 		byte[] abytes;
 		if (a.length() > 0 && a.charAt(a.length()-1) == '/') {
@@ -123,7 +125,7 @@ public class T0002_TreeTest extends SampleDataRepositoryTestCase {
 		assertTrue("no name", t.getName() == null);
 		assertTrue("no nameUTF8", t.getNameUTF8() == null);
 		assertTrue("has entries array", t.members() != null);
-		assertTrue("entries is empty", t.members().length == 0);
+		assertEquals("entries is empty", 0, t.members().length);
 		assertEquals("full name is empty", "", t.getFullName());
 		assertTrue("no id", t.getId() == null);
 		assertTrue("database is r", t.getRepository() == db);
@@ -184,7 +186,7 @@ public class T0002_TreeTest extends SampleDataRepositoryTestCase {
 		final TreeEntry[] i = t.members();
 		assertTrue("iterator is not empty", i.length > 0);
 		assertTrue("iterator returns file", i[0] == f);
-		assertTrue("iterator is empty", i.length == 1);
+		assertEquals("iterator is empty", 1, i.length);
 	}
 
 	@Test

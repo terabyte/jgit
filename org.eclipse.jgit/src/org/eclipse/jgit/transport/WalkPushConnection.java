@@ -45,29 +45,31 @@ package org.eclipse.jgit.transport;
 
 import static org.eclipse.jgit.transport.WalkRemoteObjectDatabase.ROOT_DIR;
 
-import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 
-import org.eclipse.jgit.JGitText;
 import org.eclipse.jgit.errors.TransportException;
+import org.eclipse.jgit.internal.JGitText;
 import org.eclipse.jgit.lib.AnyObjectId;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectIdRef;
 import org.eclipse.jgit.lib.ProgressMonitor;
 import org.eclipse.jgit.lib.Ref;
+import org.eclipse.jgit.lib.Ref.Storage;
 import org.eclipse.jgit.lib.RefWriter;
 import org.eclipse.jgit.lib.Repository;
-import org.eclipse.jgit.lib.Ref.Storage;
 import org.eclipse.jgit.storage.pack.PackWriter;
 import org.eclipse.jgit.transport.RemoteRefUpdate.Status;
+import org.eclipse.jgit.util.io.SafeBufferedOutputStream;
 
 /**
  * Generic push support for dumb transport protocols.
@@ -147,7 +149,7 @@ class WalkPushConnection extends BaseConnection implements PushConnection {
 		final List<RemoteRefUpdate> updates = new ArrayList<RemoteRefUpdate>();
 		for (final RemoteRefUpdate u : refUpdates.values()) {
 			final String n = u.getRemoteName();
-			if (!n.startsWith("refs/") || !Repository.isValidRefName(n)) {
+			if (!n.startsWith("refs/") || !Repository.isValidRefName(n)) { //$NON-NLS-1$
 				u.setStatus(Status.REJECTED_OTHER_REASON);
 				u.setMessage(JGitText.get().funnyRefname);
 				continue;
@@ -215,8 +217,8 @@ class WalkPushConnection extends BaseConnection implements PushConnection {
 		final PackWriter writer = new PackWriter(transport.getPackConfig(),
 				local.newObjectReader());
 		try {
-			final List<ObjectId> need = new ArrayList<ObjectId>();
-			final List<ObjectId> have = new ArrayList<ObjectId>();
+			final Set<ObjectId> need = new HashSet<ObjectId>();
+			final Set<ObjectId> have = new HashSet<ObjectId>();
 			for (final RemoteRefUpdate r : updates)
 				need.add(r.getNewObjectId());
 			for (final Ref r : getRefs()) {
@@ -237,10 +239,10 @@ class WalkPushConnection extends BaseConnection implements PushConnection {
 			for (final String n : dest.getPackNames())
 				packNames.put(n, n);
 
-			final String base = "pack-" + writer.computeName().name();
-			final String packName = base + ".pack";
-			pathPack = "pack/" + packName;
-			pathIdx = "pack/" + base + ".idx";
+			final String base = "pack-" + writer.computeName().name(); //$NON-NLS-1$
+			final String packName = base + ".pack"; //$NON-NLS-1$
+			pathPack = "pack/" + packName; //$NON-NLS-1$
+			pathIdx = "pack/" + base + ".idx"; //$NON-NLS-1$ //$NON-NLS-2$
 
 			if (packNames.remove(packName) != null) {
 				// The remote already contains this pack. We should
@@ -254,18 +256,18 @@ class WalkPushConnection extends BaseConnection implements PushConnection {
 			// Write the pack file, then the index, as readers look the
 			// other direction (index, then pack file).
 			//
-			final String wt = "Put " + base.substring(0, 12);
-			OutputStream os = dest.writeFile(pathPack, monitor, wt + "..pack");
+			final String wt = "Put " + base.substring(0, 12); //$NON-NLS-1$
+			OutputStream os = dest.writeFile(pathPack, monitor, wt + "..pack"); //$NON-NLS-1$
 			try {
-				os = new BufferedOutputStream(os);
+				os = new SafeBufferedOutputStream(os);
 				writer.writePack(monitor, monitor, os);
 			} finally {
 				os.close();
 			}
 
-			os = dest.writeFile(pathIdx, monitor, wt + "..idx");
+			os = dest.writeFile(pathIdx, monitor, wt + "..idx"); //$NON-NLS-1$
 			try {
-				os = new BufferedOutputStream(os);
+				os = new SafeBufferedOutputStream(os);
 				writer.writeIndex(os);
 			} finally {
 				os.close();
@@ -352,7 +354,7 @@ class WalkPushConnection extends BaseConnection implements PushConnection {
 	private void createNewRepository(final List<RemoteRefUpdate> updates)
 			throws TransportException {
 		try {
-			final String ref = "ref: " + pickHEAD(updates) + "\n";
+			final String ref = "ref: " + pickHEAD(updates) + "\n"; //$NON-NLS-1$ //$NON-NLS-2$
 			final byte[] bytes = Constants.encode(ref);
 			dest.writeFile(ROOT_DIR + Constants.HEAD, bytes);
 		} catch (IOException e) {
@@ -360,10 +362,10 @@ class WalkPushConnection extends BaseConnection implements PushConnection {
 		}
 
 		try {
-			final String config = "[core]\n"
-					+ "\trepositoryformatversion = 0\n";
+			final String config = "[core]\n" //$NON-NLS-1$
+					+ "\trepositoryformatversion = 0\n"; //$NON-NLS-1$
 			final byte[] bytes = Constants.encode(config);
-			dest.writeFile(ROOT_DIR + "config", bytes);
+			dest.writeFile(ROOT_DIR + Constants.CONFIG, bytes);
 		} catch (IOException e) {
 			throw new TransportException(uri, JGitText.get().cannotCreateConfig, e);
 		}

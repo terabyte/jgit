@@ -181,7 +181,7 @@ public class RawText extends Sequence {
 	 */
 	public String getString(int begin, int end, boolean dropLF) {
 		if (begin == end)
-			return "";
+			return ""; //$NON-NLS-1$
 
 		int s = getStart(begin);
 		int e = getEnd(end - 1);
@@ -275,5 +275,23 @@ public class RawText extends Sequence {
 				return true;
 
 		return false;
+	}
+
+	/**
+	 * Get the line delimiter for the first line.
+	 *
+	 * @since 2.0
+	 * @return the line delimiter or <code>null</code>
+	 */
+	public String getLineDelimiter() {
+		if (size() == 0)
+			return null;
+		int e = getEnd(0);
+		if (content[e - 1] != '\n')
+			return null;
+		if (content.length > 1 && content[e - 2] == '\r')
+			return "\r\n"; //$NON-NLS-1$
+		else
+			return "\n"; //$NON-NLS-1$
 	}
 }

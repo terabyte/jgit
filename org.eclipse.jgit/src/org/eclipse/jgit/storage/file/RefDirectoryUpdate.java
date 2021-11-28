@@ -112,7 +112,7 @@ class RefDirectoryUpdate extends RefUpdate {
 				String strResult = toResultString(status);
 				if (strResult != null) {
 					if (msg.length() > 0)
-						msg = msg + ": " + strResult;
+						msg = msg + ": " + strResult; //$NON-NLS-1$
 					else
 						msg = strResult;
 				}
@@ -121,7 +121,7 @@ class RefDirectoryUpdate extends RefUpdate {
 		}
 		if (!lock.commit())
 			return Result.LOCK_FAILURE;
-		database.stored(this, lock.getCommitLastModified());
+		database.stored(this, lock.getCommitSnapshot());
 		return status;
 	}
 
@@ -159,7 +159,7 @@ class RefDirectoryUpdate extends RefUpdate {
 			database.log(this, msg, false);
 		if (!lock.commit())
 			return Result.LOCK_FAILURE;
-		database.storedSymbolicRef(this, lock.getCommitLastModified(), target);
+		database.storedSymbolicRef(this, lock.getCommitSnapshot(), target);
 
 		if (getRef().getStorage() == Ref.Storage.NEW)
 			return Result.NEW;

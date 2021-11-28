@@ -45,6 +45,7 @@
 package org.eclipse.jgit.storage.file;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 
 import java.io.File;
@@ -54,10 +55,10 @@ import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.List;
 
+import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.PersonIdent;
 import org.eclipse.jgit.lib.SampleDataRepositoryTestCase;
-import org.eclipse.jgit.storage.file.ReflogReader.Entry;
 import org.junit.Test;
 
 public class ReflogReaderTest extends SampleDataRepositoryTestCase {
@@ -86,12 +87,15 @@ public class ReflogReaderTest extends SampleDataRepositoryTestCase {
 	static byte[] oneLineWithoutComment = "da85355dfc525c9f6f3927b876f379f46ccf826e 3e7549db262d1e836d9bf0af7e22355468f1717c A O Thor Too <authortoo@wri.tr> 1243028200 +0200\n"
 			.getBytes();
 
+	static byte[] switchBranch = "0d43a6890a19fd657faad1c4cfbe3cb1b47851c3 4809df9c0d8bce5b00955563f77c5a9f25aa0d12 A O Thor Too <authortoo@wri.tr> 1315088009 +0200\tcheckout: moving from new/work to master\n"
+			.getBytes();
+
 	@Test
 	public void testReadOneLine() throws Exception {
 		setupReflog("logs/refs/heads/master", oneLine);
 
 		ReflogReader reader = new ReflogReader(db, "refs/heads/master");
-		Entry e = reader.getLastEntry();
+		ReflogEntry e = reader.getLastEntry();
 		assertEquals(ObjectId
 				.fromString("da85355dfc525c9f6f3927b876f379f46ccf826e"), e
 				.getOldId());
@@ -106,7 +110,7 @@ public class ReflogReaderTest extends SampleDataRepositoryTestCase {
 				e.getComment());
 	}
 
-	private String iso(PersonIdent id) {
+	private static String iso(PersonIdent id) {
 		final SimpleDateFormat fmt;
 		fmt = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
 		fmt.setTimeZone(id.getTimeZone());
@@ -118,9 +122,9 @@ public class ReflogReaderTest extends SampleDataRepositoryTestCase {
 		setupReflog("logs/refs/heads/master", twoLine);
 
 		ReflogReader reader = new ReflogReader(db, "refs/heads/master");
-		List<Entry> reverseEntries = reader.getReverseEntries();
+		List<ReflogEntry> reverseEntries = reader.getReverseEntries();
 		assertEquals(2, reverseEntries.size());
-		Entry e = reverseEntries.get(0);
+		ReflogEntry e = reverseEntries.get(0);
 		assertEquals(ObjectId
 				.fromString("c6734895958052a9dbc396cff4459dc1a25029ab"), e
 				.getOldId());
@@ -153,9 +157,9 @@ public class ReflogReaderTest extends SampleDataRepositoryTestCase {
 	public void testReadWhileAppendIsInProgress() throws Exception {
 		setupReflog("logs/refs/heads/master", twoLineWithAppendInProgress);
 		ReflogReader reader = new ReflogReader(db, "refs/heads/master");
-		List<Entry> reverseEntries = reader.getReverseEntries();
+		List<ReflogEntry> reverseEntries = reader.getReverseEntries();
 		assertEquals(2, reverseEntries.size());
-		Entry e = reverseEntries.get(0);
+		ReflogEntry e = reverseEntries.get(0);
 		assertEquals(ObjectId
 				.fromString("c6734895958052a9dbc396cff4459dc1a25029ab"), e
 				.getOldId());
@@ -191,7 +195,7 @@ public class ReflogReaderTest extends SampleDataRepositoryTestCase {
 	public void testReadLineWithMissingComment() throws Exception {
 		setupReflog("logs/refs/heads/master", oneLineWithoutComment);
 		final ReflogReader reader = db.getReflogReader("master");
-		Entry e = reader.getLastEntry();
+		ReflogEntry e = reader.getLastEntry();
 		assertEquals(ObjectId
 				.fromString("da85355dfc525c9f6f3927b876f379f46ccf826e"), e
 				.getOldId());
@@ -210,6 +214,55 @@ public class ReflogReaderTest extends SampleDataRepositoryTestCase {
 	public void testNoLog() throws Exception {
 		assertEquals(0, db.getReflogReader("master").getReverseEntries().size());
 		assertNull(db.getReflogReader("master").getLastEntry());
+	}
+
+	@Test
+	public void testCheckout() throws Exception {
+		setupReflog("logs/HEAD", switchBranch);
+		List<ReflogEntry> entries = db.getReflogReader(Constants.HEAD)
+				.getReverseEntries();
+		assertEquals(1, entries.size());
+		ReflogEntry entry = entries.get(0);
+		CheckoutEntry checkout = entry.parseCheckout();
+		assertNotNull(checkout);
+		assertEquals("master", checkout.getToBranch());
+		assertEquals("new/work", checkout.getFromBranch());
+	}
+
+	@Test
+	public void testSpecificEntryNumber() throws Exception {
+		setupReflog("logs/refs/heads/master", twoLine);
+
+		ReflogReader reader = new ReflogReader(db, "refs/heads/master");
+		ReflogEntry e = reader.getReverseEntry(0);
+		assertEquals(
+				ObjectId.fromString("c6734895958052a9dbc396cff4459dc1a25029ab"),
+				e.getOldId());
+		assertEquals(
+				ObjectId.fromString("54794942a18a237c57a80719afed44bb78172b10"),
+				e.getNewId());
+		assertEquals("Same A U Thor", e.getWho().getName());
+		assertEquals("same.author@example.com", e.getWho().getEmailAddress());
+		assertEquals(60, e.getWho().getTimeZoneOffset());
+		assertEquals("2009-05-22T22:36:42", iso(e.getWho()));
+		assertEquals(
+				"rebase finished: refs/heads/rr/renamebranch5 onto c6e3b9fe2da0293f11eae202ec35fb343191a82d",
+				e.getComment());
+
+		e = reader.getReverseEntry(1);
+		assertEquals(
+				ObjectId.fromString("0000000000000000000000000000000000000000"),
+				e.getOldId());
+		assertEquals(
+				ObjectId.fromString("c6734895958052a9dbc396cff4459dc1a25029ab"),
+				e.getNewId());
+		assertEquals("A U Thor", e.getWho().getName());
+		assertEquals("thor@committer.au", e.getWho().getEmailAddress());
+		assertEquals(-60, e.getWho().getTimeZoneOffset());
+		assertEquals("2009-05-22T20:36:41", iso(e.getWho()));
+		assertEquals("branch: Created from rr/renamebranchv4", e.getComment());
+
+		assertNull(reader.getReverseEntry(3));
 	}
 
 	private void setupReflog(String logName, byte[] data)

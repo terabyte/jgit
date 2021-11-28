@@ -47,8 +47,8 @@ package org.eclipse.jgit.lib;
 import java.io.IOException;
 import java.text.MessageFormat;
 
-import org.eclipse.jgit.JGitText;
 import org.eclipse.jgit.errors.MissingObjectException;
+import org.eclipse.jgit.internal.JGitText;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevObject;
 import org.eclipse.jgit.revwalk.RevWalk;
@@ -190,7 +190,7 @@ public abstract class RefUpdate {
 	protected RefUpdate(final Ref ref) {
 		this.ref = ref;
 		oldValue = ref.getObjectId();
-		refLogMessage = "";
+		refLogMessage = ""; //$NON-NLS-1$
 	}
 
 	/** @return the reference database this update modifies. */
@@ -372,7 +372,7 @@ public abstract class RefUpdate {
 		if (msg == null && !appendStatus)
 			disableRefLog();
 		else if (msg == null && appendStatus) {
-			refLogMessage = "";
+			refLogMessage = ""; //$NON-NLS-1$
 			refLogIncludeResult = true;
 		} else {
 			refLogMessage = msg;

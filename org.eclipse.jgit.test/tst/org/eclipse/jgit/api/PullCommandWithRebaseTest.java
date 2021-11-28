@@ -44,6 +44,7 @@ package org.eclipse.jgit.api;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -54,11 +55,18 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 
 import org.eclipse.jgit.api.CreateBranchCommand.SetupUpstreamMode;
+import org.eclipse.jgit.api.MergeResult.MergeStatus;
 import org.eclipse.jgit.api.RebaseResult.Status;
+import org.eclipse.jgit.lib.ConfigConstants;
 import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.lib.RepositoryState;
 import org.eclipse.jgit.lib.RepositoryTestCase;
 import org.eclipse.jgit.lib.StoredConfig;
+import org.eclipse.jgit.merge.MergeStrategy;
+import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.storage.file.FileRepository;
 import org.eclipse.jgit.transport.RefSpec;
 import org.eclipse.jgit.transport.RemoteConfig;
@@ -105,11 +113,47 @@ public class PullCommandWithRebaseTest extends RepositoryTestCase {
 	}
 
 	@Test
+	public void testPullFastForwardWithBranchInSource() throws Exception {
+		PullResult res = target.pull().call();
+		// nothing to update since we don't have different data yet
+		assertTrue(res.getFetchResult().getTrackingRefUpdates().isEmpty());
+		assertEquals(Status.UP_TO_DATE, res.getRebaseResult().getStatus());
+
+		assertFileContentsEqual(targetFile, "Hello world");
+
+		// change the source file
+		writeToFile(sourceFile, "Another change\n\n\n\nFoo");
+		source.add().addFilepattern("SomeFile.txt").call();
+		RevCommit initialCommit = source.commit()
+				.setMessage("Some change in remote").call();
+
+		// modify the source file in a branch
+		createBranch(initialCommit, "refs/heads/side");
+		checkoutBranch("refs/heads/side");
+		writeToFile(sourceFile, "Another change\n\n\n\nBoo");
+		source.add().addFilepattern("SomeFile.txt").call();
+		RevCommit sideCommit = source.commit()
+				.setMessage("Some change in remote").call();
+
+		// modify the source file on master
+		checkoutBranch("refs/heads/master");
+		writeToFile(sourceFile, "More change\n\n\n\nFoo");
+		source.add().addFilepattern("SomeFile.txt").call();
+		source.commit().setMessage("Some change in remote").call();
+
+		// merge side into master
+		MergeResult result = source.merge().include(sideCommit.getId())
+				.setStrategy(MergeStrategy.RESOLVE).call();
+		assertEquals(MergeStatus.MERGED, result.getMergeStatus());
+
+	}
+
+	@Test
 	public void testPullConflict() throws Exception {
 		PullResult res = target.pull().call();
 		// nothing to update since we don't have different data yet
 		assertTrue(res.getFetchResult().getTrackingRefUpdates().isEmpty());
-		assertTrue(res.getRebaseResult().getStatus().equals(Status.UP_TO_DATE));
+		assertEquals(Status.UP_TO_DATE, res.getRebaseResult().getStatus());
 
 		assertFileContentsEqual(targetFile, "Hello world");
 
@@ -125,9 +169,17 @@ public class PullCommandWithRebaseTest extends RepositoryTestCase {
 
 		res = target.pull().call();
 
+		String remoteUri = target
+				.getRepository()
+				.getConfig()
+				.getString(ConfigConstants.CONFIG_REMOTE_SECTION, "origin",
+						ConfigConstants.CONFIG_KEY_URL);
+
 		assertFalse(res.getFetchResult().getTrackingRefUpdates().isEmpty());
-		assertTrue(res.getRebaseResult().getStatus().equals(Status.STOPPED));
-		String result = "<<<<<<< OURS\nSource change\n=======\nTarget change\n>>>>>>> THEIRS\n";
+		assertEquals(Status.STOPPED, res.getRebaseResult().getStatus());
+		String result = "<<<<<<< Upstream, based on branch 'master' of "
+				+ remoteUri
+				+ "\nSource change\n=======\nTarget change\n>>>>>>> 42453fd Target change in local\n";
 		assertFileContentsEqual(targetFile, result);
 		assertEquals(RepositoryState.REBASING_INTERACTIVE, target
 				.getRepository().getRepositoryState());
@@ -171,10 +223,77 @@ public class PullCommandWithRebaseTest extends RepositoryTestCase {
 
 		assertNull(res.getFetchResult());
 		assertEquals(Status.STOPPED, res.getRebaseResult().getStatus());
-		String result = "<<<<<<< OURS\nMaster change\n=======\nSlave change\n>>>>>>> THEIRS\n";
+		String result = "<<<<<<< Upstream, based on branch 'master' of local repository\n"
+				+ "Master change\n=======\nSlave change\n>>>>>>> 4049c9e Source change in based on master\n";
 		assertFileContentsEqual(targetFile, result);
 		assertEquals(RepositoryState.REBASING_INTERACTIVE, target
 				.getRepository().getRepositoryState());
+	}
+
+    @Test
+	public void testPullFastForwardWithLocalCommitAndRebaseFlagSet() throws Exception {
+		final String SOURCE_COMMIT_MESSAGE = "Source commit message for rebase flag test";
+		final String TARGET_COMMIT_MESSAGE = "Target commit message for rebase flag test";
+
+		assertFalse(SOURCE_COMMIT_MESSAGE.equals(TARGET_COMMIT_MESSAGE));
+
+		final String SOURCE_FILE_CONTENTS = "Source change";
+		final String NEW_FILE_CONTENTS = "New file from target";
+
+		// make sure the config for target says we should pull with merge
+		// we will override this later with the setRebase method
+		StoredConfig targetConfig = dbTarget.getConfig();
+		targetConfig.setBoolean("branch", "master", "rebase", false);
+		targetConfig.save();
+
+		// create commit in source
+		writeToFile(sourceFile, SOURCE_FILE_CONTENTS);
+		source.add().addFilepattern(sourceFile.getName()).call();
+		source.commit().setMessage(SOURCE_COMMIT_MESSAGE).call();
+
+		// create commit in target, not conflicting with the new commit in source
+		File newFile = new File(dbTarget.getWorkTree().getPath() + "/newFile.txt");
+		writeToFile(newFile, NEW_FILE_CONTENTS);
+		target.add().addFilepattern(newFile.getName()).call();
+		target.commit().setMessage(TARGET_COMMIT_MESSAGE).call();
+
+		// verify that rebase is set to false in the config
+		assertFalse(targetConfig.getBoolean("branch", "master", "rebase", true));
+
+		// pull with rebase - local commit in target should be on top
+		PullResult pullResult = target.pull().setRebase(true).call();
+
+		// make sure pull is considered successful
+		assertTrue(pullResult.isSuccessful());
+
+		// verify rebase result is ok
+		RebaseResult rebaseResult = pullResult.getRebaseResult();
+		assertNotNull(rebaseResult);
+		assertNull(rebaseResult.getFailingPaths());
+		assertEquals(Status.OK, rebaseResult.getStatus());
+
+		// Get the HEAD and HEAD~1 commits
+		Repository targetRepo = target.getRepository();
+		RevWalk revWalk = new RevWalk(targetRepo);
+		ObjectId headId = targetRepo.resolve(Constants.HEAD);
+		RevCommit root = revWalk.parseCommit(headId);
+		revWalk.markStart(root);
+		// HEAD
+		RevCommit head = revWalk.next();
+		// HEAD~1
+		RevCommit beforeHead = revWalk.next();
+
+		// verify the commit message on the HEAD commit
+		assertEquals(TARGET_COMMIT_MESSAGE, head.getFullMessage());
+		// verify the commit just before HEAD
+		assertEquals(SOURCE_COMMIT_MESSAGE, beforeHead.getFullMessage());
+
+		// verify file states
+		assertFileContentsEqual(sourceFile, SOURCE_FILE_CONTENTS);
+		assertFileContentsEqual(newFile, NEW_FILE_CONTENTS);
+		// verify repository state
+		assertEquals(RepositoryState.SAFE, target
+			.getRepository().getRepositoryState());
 	}
 
 	@Override
@@ -221,7 +340,8 @@ public class PullCommandWithRebaseTest extends RepositoryTestCase {
 		assertFileContentsEqual(targetFile, "Hello world");
 	}
 
-	private void writeToFile(File actFile, String string) throws IOException {
+	private static void writeToFile(File actFile, String string)
+			throws IOException {
 		FileOutputStream fos = null;
 		try {
 			fos = new FileOutputStream(actFile);
@@ -233,7 +353,7 @@ public class PullCommandWithRebaseTest extends RepositoryTestCase {
 		}
 	}
 
-	private void assertFileContentsEqual(File actFile, String string)
+	private static void assertFileContentsEqual(File actFile, String string)
 			throws IOException {
 		ByteArrayOutputStream bos = new ByteArrayOutputStream();
 		FileInputStream fis = null;

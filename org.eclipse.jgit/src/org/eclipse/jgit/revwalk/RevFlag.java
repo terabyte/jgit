@@ -45,7 +45,7 @@ package org.eclipse.jgit.revwalk;
 
 import java.text.MessageFormat;
 
-import org.eclipse.jgit.JGitText;
+import org.eclipse.jgit.internal.JGitText;
 
 /**
  * Application level mark bit for {@link RevObject}s.
@@ -64,7 +64,7 @@ public class RevFlag {
 	 * This is a static flag. Its RevWalk is not available.
 	 */
 	public static final RevFlag UNINTERESTING = new StaticRevFlag(
-			"UNINTERESTING", RevWalk.UNINTERESTING);
+			"UNINTERESTING", RevWalk.UNINTERESTING); //$NON-NLS-1$
 
 	final RevWalk walker;
 

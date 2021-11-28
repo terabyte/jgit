@@ -58,9 +58,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 
-import org.eclipse.jgit.JGitText;
 import org.eclipse.jgit.errors.NotSupportedException;
 import org.eclipse.jgit.errors.TransportException;
+import org.eclipse.jgit.internal.JGitText;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectIdRef;
@@ -166,14 +166,14 @@ public class TransportSftp extends SshTransport implements WalkTransport {
 		private ChannelSftp ftp;
 
 		SftpObjectDB(String path) throws TransportException {
-			if (path.startsWith("/~"))
+			if (path.startsWith("/~")) //$NON-NLS-1$
 				path = path.substring(1);
-			if (path.startsWith("~/"))
+			if (path.startsWith("~/")) //$NON-NLS-1$
 				path = path.substring(2);
 			try {
 				ftp = newSftp();
 				ftp.cd(path);
-				ftp.cd("objects");
+				ftp.cd("objects"); //$NON-NLS-1$
 				objectsPath = ftp.pwd();
 			} catch (TransportException err) {
 				close();
@@ -224,7 +224,7 @@ public class TransportSftp extends SshTransport implements WalkTransport {
 		Collection<String> getPackNames() throws IOException {
 			final List<String> packs = new ArrayList<String>();
 			try {
-				final Collection<ChannelSftp.LsEntry> list = ftp.ls("pack");
+				final Collection<ChannelSftp.LsEntry> list = ftp.ls("pack"); //$NON-NLS-1$
 				final HashMap<String, ChannelSftp.LsEntry> files;
 				final HashMap<String, Integer> mtimes;
 
@@ -235,20 +235,21 @@ public class TransportSftp extends SshTransport implements WalkTransport {
 					files.put(ent.getFilename(), ent);
 				for (final ChannelSftp.LsEntry ent : list) {
 					final String n = ent.getFilename();
-					if (!n.startsWith("pack-") || !n.endsWith(".pack"))
+					if (!n.startsWith("pack-") || !n.endsWith(".pack")) //$NON-NLS-1$
 						continue;
 
-					final String in = n.substring(0, n.length() - 5) + ".idx";
+					final String in = n.substring(0, n.length() - 5) + ".idx"; //$NON-NLS-1$
 					if (!files.containsKey(in))
 						continue;
 
-					mtimes.put(n, ent.getAttrs().getMTime());
+					mtimes.put(n, Integer.valueOf(ent.getAttrs().getMTime()));
 					packs.add(n);
 				}
 
 				Collections.sort(packs, new Comparator<String>() {
 					public int compare(final String o1, final String o2) {
-						return mtimes.get(o2) - mtimes.get(o1);
+						return mtimes.get(o2).intValue()
+								- mtimes.get(o1).intValue();
 					}
 				});
 			} catch (SftpException je) {
@@ -324,7 +325,7 @@ public class TransportSftp extends SshTransport implements WalkTransport {
 
 		@Override
 		void writeFile(final String path, final byte[] data) throws IOException {
-			final String lock = path + ".lock";
+			final String lock = path + ".lock"; //$NON-NLS-1$
 			try {
 				super.writeFile(lock, data);
 				try {
@@ -372,7 +373,7 @@ public class TransportSftp extends SshTransport implements WalkTransport {
 			final TreeMap<String, Ref> avail = new TreeMap<String, Ref>();
 			readPackedRefs(avail);
 			readRef(avail, ROOT_DIR + Constants.HEAD, Constants.HEAD);
-			readLooseRefs(avail, ROOT_DIR + "refs", "refs/");
+			readLooseRefs(avail, ROOT_DIR + "refs", "refs/"); //$NON-NLS-1$ //$NON-NLS-2$
 			return avail;
 		}
 
@@ -389,12 +390,12 @@ public class TransportSftp extends SshTransport implements WalkTransport {
 
 			for (final ChannelSftp.LsEntry ent : list) {
 				final String n = ent.getFilename();
-				if (".".equals(n) || "..".equals(n))
+				if (".".equals(n) || "..".equals(n)) //$NON-NLS-1$ //$NON-NLS-2$
 					continue;
 
-				final String nPath = dir + "/" + n;
+				final String nPath = dir + "/" + n; //$NON-NLS-1$
 				if (ent.getAttrs().isDir())
-					readLooseRefs(avail, nPath, prefix + n + "/");
+					readLooseRefs(avail, nPath, prefix + n + "/"); //$NON-NLS-1$
 				else
 					readRef(avail, nPath, prefix + n);
 			}
@@ -420,8 +421,8 @@ public class TransportSftp extends SshTransport implements WalkTransport {
 			if (line == null)
 				throw new TransportException("Empty ref: " + name);
 
-			if (line.startsWith("ref: ")) {
-				final String target = line.substring("ref: ".length());
+			if (line.startsWith("ref: ")) { //$NON-NLS-1$
+				final String target = line.substring("ref: ".length()); //$NON-NLS-1$
 				Ref r = avail.get(target);
 				if (r == null)
 					r = readRef(avail, ROOT_DIR + target, target);

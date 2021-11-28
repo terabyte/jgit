@@ -43,11 +43,11 @@
 
 package org.eclipse.jgit.diff;
 
-import org.eclipse.jgit.JGitText;
+import org.eclipse.jgit.internal.JGitText;
 
 /**
  * Support {@link HistogramDiff} by computing occurrence counts of elements.
- *
+ * <p>
  * Each element in the range being considered is put into a hash table, tracking
  * the number of times that distinct element appears in the sequence. Once all
  * elements have been inserted from sequence A, each element of sequence B is

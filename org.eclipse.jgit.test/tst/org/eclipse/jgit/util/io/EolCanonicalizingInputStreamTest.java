@@ -57,29 +57,47 @@ public class EolCanonicalizingInputStreamTest {
 	@Test
 	public void testLF() throws IOException {
 		final byte[] bytes = asBytes("1\n2\n3");
-		test(bytes, bytes);
+		test(bytes, bytes, false);
 	}
 
 	@Test
 	public void testCR() throws IOException {
 		final byte[] bytes = asBytes("1\r2\r3");
-		test(bytes, bytes);
+		test(bytes, bytes, false);
 	}
 
 	@Test
 	public void testCRLF() throws IOException {
-		test(asBytes("1\r\n2\r\n3"), asBytes("1\n2\n3"));
+		test(asBytes("1\r\n2\r\n3"), asBytes("1\n2\n3"), false);
 	}
 
 	@Test
 	public void testLFCR() throws IOException {
 		final byte[] bytes = asBytes("1\n\r2\n\r3");
-		test(bytes, bytes);
+		test(bytes, bytes, false);
 	}
 
-	private void test(byte[] input, byte[] expected) throws IOException {
+	@Test
+	public void testEmpty() throws IOException {
+		final byte[] bytes = asBytes("");
+		test(bytes, bytes, false);
+	}
+
+	@Test
+	public void testBinaryDetect() throws IOException {
+		final byte[] bytes = asBytes("1\r\n2\r\n3\0");
+		test(bytes, bytes, true);
+	}
+
+	@Test
+	public void testBinaryDontDetect() throws IOException {
+		test(asBytes("1\r\n2\r\n3\0"), asBytes("1\n2\n3\0"), false);
+	}
+
+	private static void test(byte[] input, byte[] expected,
+			boolean detectBinary) throws IOException {
 		final InputStream bis1 = new ByteArrayInputStream(input);
-		final InputStream cis1 = new EolCanonicalizingInputStream(bis1);
+		final InputStream cis1 = new EolCanonicalizingInputStream(bis1, detectBinary);
 		int index1 = 0;
 		for (int b = cis1.read(); b != -1; b = cis1.read()) {
 			assertEquals(expected[index1], (byte) b);
@@ -91,7 +109,7 @@ public class EolCanonicalizingInputStreamTest {
 		for (int bufferSize = 1; bufferSize < 10; bufferSize++) {
 			final byte[] buffer = new byte[bufferSize];
 			final InputStream bis2 = new ByteArrayInputStream(input);
-			final InputStream cis2 = new EolCanonicalizingInputStream(bis2);
+			final InputStream cis2 = new EolCanonicalizingInputStream(bis2, detectBinary);
 
 			int read = 0;
 			for (int readNow = cis2.read(buffer, 0, buffer.length); readNow != -1
@@ -104,7 +122,9 @@ public class EolCanonicalizingInputStreamTest {
 			}
 
 			assertEquals(expected.length, read);
+			cis2.close();
 		}
+		cis1.close();
 	}
 
 	private static byte[] asBytes(String in) {

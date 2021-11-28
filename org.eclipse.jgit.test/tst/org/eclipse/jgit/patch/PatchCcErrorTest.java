@@ -43,6 +43,8 @@
 
 package org.eclipse.jgit.patch;
 
+import static java.lang.Integer.valueOf;
+import static java.lang.Long.valueOf;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
@@ -52,7 +54,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.text.MessageFormat;
 
-import org.eclipse.jgit.JGitText;
+import org.eclipse.jgit.internal.JGitText;
 import org.eclipse.jgit.junit.JGitTestUtil;
 import org.junit.Test;
 
@@ -65,9 +67,9 @@ public class PatchCcErrorTest {
 		{
 			final FormatError e = p.getErrors().get(0);
 			assertSame(FormatError.Severity.ERROR, e.getSeverity());
-			assertEquals(
-					MessageFormat.format(JGitText.get().truncatedHunkLinesMissingForAncestor, 1, 1),
-					e.getMessage());
+			assertEquals(MessageFormat.format(
+					JGitText.get().truncatedHunkLinesMissingForAncestor,
+					valueOf(1), valueOf(1)), e.getMessage());
 			assertEquals(346, e.getOffset());
 			assertTrue(e.getLineText().startsWith(
 					"@@@ -55,12 -163,13 +163,15 @@@ public "));
@@ -75,9 +77,9 @@ public class PatchCcErrorTest {
 		{
 			final FormatError e = p.getErrors().get(1);
 			assertSame(FormatError.Severity.ERROR, e.getSeverity());
-			assertEquals(
-					MessageFormat.format(JGitText.get().truncatedHunkLinesMissingForAncestor, 2, 2),
-					e.getMessage());
+			assertEquals(MessageFormat.format(
+					JGitText.get().truncatedHunkLinesMissingForAncestor,
+					valueOf(2), valueOf(2)), e.getMessage());
 			assertEquals(346, e.getOffset());
 			assertTrue(e.getLineText().startsWith(
 					"@@@ -55,12 -163,13 +163,15 @@@ public "));

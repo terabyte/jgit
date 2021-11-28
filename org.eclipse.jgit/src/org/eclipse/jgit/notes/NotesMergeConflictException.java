@@ -46,7 +46,7 @@ package org.eclipse.jgit.notes;
 import java.io.IOException;
 import java.text.MessageFormat;
 
-import org.eclipse.jgit.JGitText;
+import org.eclipse.jgit.internal.JGitText;
 
 /**
  * This exception will be thrown from the {@link NoteMerger} when a conflict on
@@ -101,10 +101,10 @@ public class NotesMergeConflictException extends IOException {
 	private static String noteData(Note n) {
 		if (n != null)
 			return n.getData().name();
-		return "";
+		return ""; //$NON-NLS-1$
 	}
 
 	private static String name(NonNoteEntry e) {
-		return e != null ? e.name() : "";
+		return e != null ? e.name() : ""; //$NON-NLS-1$
 	}
 }

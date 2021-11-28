@@ -73,11 +73,11 @@ import org.eclipse.jetty.servlet.FilterHolder;
 import org.eclipse.jetty.servlet.FilterMapping;
 import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.servlet.ServletHolder;
-import org.eclipse.jgit.JGitText;
 import org.eclipse.jgit.errors.RemoteRepositoryException;
 import org.eclipse.jgit.errors.RepositoryNotFoundException;
 import org.eclipse.jgit.errors.TransportException;
 import org.eclipse.jgit.http.server.GitServlet;
+import org.eclipse.jgit.internal.JGitText;
 import org.eclipse.jgit.junit.TestRepository;
 import org.eclipse.jgit.junit.TestRng;
 import org.eclipse.jgit.junit.http.AccessEvent;
@@ -89,6 +89,7 @@ import org.eclipse.jgit.lib.Ref;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevBlob;
 import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.storage.file.ReflogEntry;
 import org.eclipse.jgit.storage.file.FileBasedConfig;
 import org.eclipse.jgit.storage.file.FileRepository;
 import org.eclipse.jgit.storage.file.ReflogReader;
@@ -319,7 +320,7 @@ public class SmartClientSmartServerTest extends HttpTestCase {
 
 		// Create a new commit on the remote.
 		//
-		b = new TestRepository(remoteRepository).branch(master);
+		b = new TestRepository<Repository>(remoteRepository).branch(master);
 		RevCommit Z = b.commit().message("Z").create();
 
 		// Now incrementally update.
@@ -385,7 +386,7 @@ public class SmartClientSmartServerTest extends HttpTestCase {
 
 		// Create a new commit on the remote.
 		//
-		b = new TestRepository(remoteRepository).branch(master);
+		b = new TestRepository<Repository>(remoteRepository).branch(master);
 		RevCommit Z = b.commit().message("Z").create();
 
 		// Now incrementally update.
@@ -558,7 +559,7 @@ public class SmartClientSmartServerTest extends HttpTestCase {
 		final ReflogReader log = remoteRepository.getReflogReader(dstName);
 		assertNotNull("has log for " + dstName);
 
-		final ReflogReader.Entry last = log.getLastEntry();
+		final ReflogEntry last = log.getLastEntry();
 		assertNotNull("has last entry", last);
 		assertEquals(ObjectId.zeroId(), last.getOldId());
 		assertEquals(Q, last.getNewId());

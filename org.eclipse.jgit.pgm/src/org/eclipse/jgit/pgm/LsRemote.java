@@ -45,6 +45,8 @@
 
 package org.eclipse.jgit.pgm;
 
+import java.io.IOException;
+
 import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.Option;
 import org.eclipse.jgit.lib.AnyObjectId;
@@ -69,7 +71,7 @@ class LsRemote extends TextBuiltin {
 			for (final Ref r : c.getRefs()) {
 				show(r.getObjectId(), r.getName());
 				if (r.getPeeledObjectId() != null)
-					show(r.getPeeledObjectId(), r.getName() + "^{}");
+					show(r.getPeeledObjectId(), r.getName() + "^{}"); //$NON-NLS-1$
 			}
 		} finally {
 			c.close();
@@ -77,10 +79,11 @@ class LsRemote extends TextBuiltin {
 		}
 	}
 
-	private void show(final AnyObjectId id, final String name) {
-		out.print(id.name());
-		out.print('\t');
-		out.print(name);
-		out.println();
+	private void show(final AnyObjectId id, final String name)
+			throws IOException {
+		outw.print(id.name());
+		outw.print('\t');
+		outw.print(name);
+		outw.println();
 	}
 }

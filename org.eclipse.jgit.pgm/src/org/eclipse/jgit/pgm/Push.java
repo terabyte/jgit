@@ -44,6 +44,8 @@
 
 package org.eclipse.jgit.pgm;
 
+import static java.lang.Character.valueOf;
+
 import java.io.IOException;
 import java.text.MessageFormat;
 import java.util.ArrayList;
@@ -89,7 +91,7 @@ class Push extends TextBuiltin {
 	private boolean thin = Transport.DEFAULT_PUSH_THIN;
 
 	@Option(name = "--no-thin")
-	void nothin(final boolean ignored) {
+	void nothin(@SuppressWarnings("unused") final boolean ignored) {
 		thin = false;
 	}
 
@@ -132,7 +134,7 @@ class Push extends TextBuiltin {
 	}
 
 	private void printPushResult(final ObjectReader reader, final URIish uri,
-			final PushResult result) {
+			final PushResult result) throws IOException {
 		shownURI = false;
 		boolean everythingUpToDate = true;
 
@@ -160,14 +162,15 @@ class Push extends TextBuiltin {
 
 		AbstractFetchCommand.showRemoteMessages(result.getMessages());
 		if (everythingUpToDate)
-			out.println(CLIText.get().everythingUpToDate);
+			outw.println(CLIText.get().everythingUpToDate);
 	}
 
 	private void printRefUpdateResult(final ObjectReader reader,
-			final URIish uri, final PushResult result, final RemoteRefUpdate rru) {
+			final URIish uri, final PushResult result, final RemoteRefUpdate rru)
+			throws IOException {
 		if (!shownURI) {
 			shownURI = true;
-			out.println(MessageFormat.format(CLIText.get().pushTo, uri));
+			outw.println(MessageFormat.format(CLIText.get().pushTo, uri));
 		}
 
 		final String remoteName = rru.getRemoteName();
@@ -191,7 +194,7 @@ class Push extends TextBuiltin {
 					final char flag = fastForward ? ' ' : '+';
 					final String summary = safeAbbreviate(reader, oldRef
 							.getObjectId())
-							+ (fastForward ? ".." : "...")
+							+ (fastForward ? ".." : "...") //$NON-NLS-1$ //$NON-NLS-2$
 							+ safeAbbreviate(reader, rru.getNewObjectId());
 					final String message = fastForward ? null : CLIText.get().forcedUpdate;
 					printUpdateLine(flag, summary, srcRef, remoteName, message);
@@ -238,7 +241,7 @@ class Push extends TextBuiltin {
 		}
 	}
 
-	private String safeAbbreviate(ObjectReader reader, ObjectId id) {
+	private static String safeAbbreviate(ObjectReader reader, ObjectId id) {
 		try {
 			return reader.abbreviate(id).name();
 		} catch (IOException cannotAbbreviate) {
@@ -247,16 +250,17 @@ class Push extends TextBuiltin {
 	}
 
 	private void printUpdateLine(final char flag, final String summary,
-			final String srcRef, final String destRef, final String message) {
-		out.format(" %c %-17s", flag, summary);
+			final String srcRef, final String destRef, final String message)
+			throws IOException {
+		outw.format(" %c %-17s", valueOf(flag), summary); //$NON-NLS-1$
 
 		if (srcRef != null)
-			out.format(" %s ->", abbreviateRef(srcRef, true));
-		out.format(" %s", abbreviateRef(destRef, true));
+			outw.format(" %s ->", abbreviateRef(srcRef, true)); //$NON-NLS-1$
+		outw.format(" %s", abbreviateRef(destRef, true)); //$NON-NLS-1$
 
 		if (message != null)
-			out.format(" (%s)", message);
+			outw.format(" (%s)", message); //$NON-NLS-1$
 
-		out.println();
+		outw.println();
 	}
 }

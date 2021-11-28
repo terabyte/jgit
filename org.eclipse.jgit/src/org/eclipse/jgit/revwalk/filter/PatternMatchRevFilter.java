@@ -48,9 +48,9 @@ import java.io.IOException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import org.eclipse.jgit.JGitText;
 import org.eclipse.jgit.errors.IncorrectObjectTypeException;
 import org.eclipse.jgit.errors.MissingObjectException;
+import org.eclipse.jgit.internal.JGitText;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevWalk;
@@ -106,13 +106,13 @@ public abstract class PatternMatchRevFilter extends RevFilter {
 		patternText = pattern;
 
 		if (innerString) {
-			if (!pattern.startsWith("^") && !pattern.startsWith(".*"))
-				pattern = ".*" + pattern;
-			if (!pattern.endsWith("$") && !pattern.endsWith(".*"))
-				pattern = pattern + ".*";
+			if (!pattern.startsWith("^") && !pattern.startsWith(".*")) //$NON-NLS-1$ //$NON-NLS-2$
+				pattern = ".*" + pattern; //$NON-NLS-1$
+			if (!pattern.endsWith("$") && !pattern.endsWith(".*")) //$NON-NLS-1$ //$NON-NLS-2$
+				pattern = pattern + ".*"; //$NON-NLS-1$
 		}
 		final String p = rawEncoding ? forceToRaw(pattern) : pattern;
-		compiledPattern = Pattern.compile(p, flags).matcher("");
+		compiledPattern = Pattern.compile(p, flags).matcher(""); //$NON-NLS-1$
 	}
 
 	/**
@@ -145,6 +145,7 @@ public abstract class PatternMatchRevFilter extends RevFilter {
 	 */
 	protected abstract CharSequence text(RevCommit cmit);
 
+	@SuppressWarnings("nls")
 	@Override
 	public String toString() {
 		return super.toString() + "(\"" + patternText + "\")";

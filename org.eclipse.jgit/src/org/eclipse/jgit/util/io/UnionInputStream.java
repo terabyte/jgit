@@ -138,20 +138,18 @@ public class UnionInputStream extends InputStream {
 
 	@Override
 	public int read(byte[] b, int off, int len) throws IOException {
-		int cnt = 0;
-		while (0 < len) {
+		if (len == 0)
+			return 0;
+		for (;;) {
 			final InputStream in = head();
 			final int n = in.read(b, off, len);
-			if (0 < n) {
-				cnt += n;
-				off += n;
-				len -= n;
-			} else if (in == EOF)
-				return 0 < cnt ? cnt : -1;
+			if (0 < n)
+				return n;
+			else if (in == EOF)
+				return -1;
 			else
 				pop();
 		}
-		return cnt;
 	}
 
 	@Override
@@ -180,6 +178,8 @@ public class UnionInputStream extends InputStream {
 				final int r = in.read();
 				if (r < 0) {
 					pop();
+					if (0 < cnt)
+						break;
 				} else {
 					cnt += 1;
 					len -= 1;

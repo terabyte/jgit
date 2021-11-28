@@ -52,24 +52,18 @@
 package org.eclipse.jgit.lib;
 
 import java.text.MessageFormat;
-import java.util.AbstractSet;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 
-import org.eclipse.jgit.JGitText;
 import org.eclipse.jgit.errors.ConfigInvalidException;
 import org.eclipse.jgit.events.ConfigChangedEvent;
 import org.eclipse.jgit.events.ConfigChangedListener;
 import org.eclipse.jgit.events.ListenerHandle;
 import org.eclipse.jgit.events.ListenerList;
+import org.eclipse.jgit.internal.JGitText;
 import org.eclipse.jgit.util.StringUtils;
 
 
@@ -91,7 +85,7 @@ public class Config {
 	 * This state is copy-on-write. It should always contain an immutable list
 	 * of the configuration keys/values.
 	 */
-	private final AtomicReference<State> state;
+	private final AtomicReference<ConfigSnapshot> state;
 
 	private final Config baseConfig;
 
@@ -118,7 +112,7 @@ public class Config {
 	 */
 	public Config(Config defaultConfig) {
 		baseConfig = defaultConfig;
-		state = new AtomicReference<State>(newState());
+		state = new AtomicReference<ConfigSnapshot>(newState());
 	}
 
 	/**
@@ -140,24 +134,24 @@ public class Config {
 					r.append('"');
 					inquote = false;
 				}
-				r.append("\\n\\\n");
+				r.append("\\n\\\n"); //$NON-NLS-1$
 				lineStart = r.length();
 				break;
 
 			case '\t':
-				r.append("\\t");
+				r.append("\\t"); //$NON-NLS-1$
 				break;
 
 			case '\b':
-				r.append("\\b");
+				r.append("\\b"); //$NON-NLS-1$
 				break;
 
 			case '\\':
-				r.append("\\\\");
+				r.append("\\\\"); //$NON-NLS-1$
 				break;
 
 			case '"':
-				r.append("\\\"");
+				r.append("\\\""); //$NON-NLS-1$
 				break;
 
 			case ';':
@@ -360,7 +354,7 @@ public class Config {
 	@SuppressWarnings("unchecked")
 	private static <T> T[] allValuesOf(final T value) {
 		try {
-			return (T[]) value.getClass().getMethod("values").invoke(null);
+			return (T[]) value.getClass().getMethod("values").invoke(null); //$NON-NLS-1$
 		} catch (Exception err) {
 			String typeName = value.getClass().getName();
 			String msg = MessageFormat.format(
@@ -393,15 +387,28 @@ public class Config {
 		if (value == null)
 			return defaultValue;
 
+		if (all[0] instanceof ConfigEnum) {
+			for (T t : all) {
+				if (((ConfigEnum) t).matchConfigValue(value))
+					return t;
+			}
+		}
+
 		String n = value.replace(' ', '_');
+
+		// Because of c98abc9c0586c73ef7df4172644b7dd21c979e9d being used in
+		// the real world before its breakage was fully understood, we must
+		// also accept '-' as though it were ' '.
+		n = n.replace('-', '_');
+
 		T trueState = null;
 		T falseState = null;
 		for (T e : all) {
 			if (StringUtils.equalsIgnoreCase(e.name(), n))
 				return e;
-			else if (StringUtils.equalsIgnoreCase(e.name(), "TRUE"))
+			else if (StringUtils.equalsIgnoreCase(e.name(), "TRUE")) //$NON-NLS-1$
 				trueState = e;
-			else if (StringUtils.equalsIgnoreCase(e.name(), "FALSE"))
+			else if (StringUtils.equalsIgnoreCase(e.name(), "FALSE")) //$NON-NLS-1$
 				falseState = e;
 		}
 
@@ -418,11 +425,13 @@ public class Config {
 		}
 
 		if (subsection != null)
-			throw new IllegalArgumentException(MessageFormat.format(JGitText
-					.get().enumValueNotSupported3, section, name, value));
+			throw new IllegalArgumentException(MessageFormat.format(
+					JGitText.get().enumValueNotSupported3, section, subsection,
+					name, value));
 		else
-			throw new IllegalArgumentException(MessageFormat.format(JGitText
-					.get().enumValueNotSupported2, section, name, value));
+			throw new IllegalArgumentException(
+					MessageFormat.format(JGitText.get().enumValueNotSupported2,
+							section, name, value));
 	}
 
 	/**
@@ -457,22 +466,22 @@ public class Config {
 	 */
 	public String[] getStringList(final String section, String subsection,
 			final String name) {
-		final String[] baseList;
+		String[] base;
 		if (baseConfig != null)
-			baseList = baseConfig.getStringList(section, subsection, name);
+			base = baseConfig.getStringList(section, subsection, name);
 		else
-			baseList = EMPTY_STRING_ARRAY;
+			base = EMPTY_STRING_ARRAY;
 
-		final List<String> lst = getRawStringList(section, subsection, name);
-		if (lst != null) {
-			final String[] res = new String[baseList.length + lst.size()];
-			int idx = baseList.length;
-			System.arraycopy(baseList, 0, res, 0, idx);
-			for (final String val : lst)
-				res[idx++] = val;
-			return res;
-		}
-		return baseList;
+		String[] self = getRawStringList(section, subsection, name);
+		if (self == null)
+			return base;
+		if (base.length == 0)
+			return self;
+		String[] res = new String[base.length + self.length];
+		int n = base.length;
+		System.arraycopy(base, 0, res, 0, n);
+		System.arraycopy(self, 0, res, n, self.length);
+		return res;
 	}
 
 	/**
@@ -480,17 +489,22 @@ public class Config {
 	 *            section to search for.
 	 * @return set of all subsections of specified section within this
 	 *         configuration and its base configuration; may be empty if no
-	 *         subsection exists.
+	 *         subsection exists. The set's iterator returns sections in the
+	 *         order they are declared by the configuration starting from this
+	 *         instance and progressing through the base.
 	 */
 	public Set<String> getSubsections(final String section) {
-		return get(new SubsectionNames(section));
+		return getState().getSubsections(section);
 	}
 
 	/**
-	 * @return the sections defined in this {@link Config}
+	 * @return the sections defined in this {@link Config}. The set's iterator
+	 *         returns sections in the order they are declared by the
+	 *         configuration starting from this instance and progressing through
+	 *         the base.
 	 */
 	public Set<String> getSections() {
-		return get(new SectionNames());
+		return getState().getSections();
 	}
 
 	/**
@@ -510,7 +524,7 @@ public class Config {
 	 * @return the list of names defined for this subsection
 	 */
 	public Set<String> getNames(String section, String subsection) {
-		return get(new NamesInSection(section, subsection));
+		return getState().getNames(section, subsection);
 	}
 
 	/**
@@ -527,7 +541,7 @@ public class Config {
 	 */
 	@SuppressWarnings("unchecked")
 	public <T> T get(final SectionParser<T> parser) {
-		final State myState = getState();
+		final ConfigSnapshot myState = getState();
 		T obj = (T) myState.cache.get(parser);
 		if (obj == null) {
 			obj = parser.parse(this);
@@ -589,51 +603,33 @@ public class Config {
 
 	private String getRawString(final String section, final String subsection,
 			final String name) {
-		final List<String> lst = getRawStringList(section, subsection, name);
+		String[] lst = getRawStringList(section, subsection, name);
 		if (lst != null)
-			return lst.get(0);
+			return lst[0];
 		else if (baseConfig != null)
 			return baseConfig.getRawString(section, subsection, name);
 		else
 			return null;
 	}
 
-	private List<String> getRawStringList(final String section,
-			final String subsection, final String name) {
-		List<String> r = null;
-		for (final Entry e : state.get().entryList) {
-			if (e.match(section, subsection, name))
-				r = add(r, e.value);
-		}
-		return r;
+	private String[] getRawStringList(String section, String subsection,
+			String name) {
+		return state.get().get(section, subsection, name);
 	}
 
-	private static List<String> add(final List<String> curr, final String value) {
-		if (curr == null)
-			return Collections.singletonList(value);
-		if (curr.size() == 1) {
-			final List<String> r = new ArrayList<String>(2);
-			r.add(curr.get(0));
-			r.add(value);
-			return r;
-		}
-		curr.add(value);
-		return curr;
-	}
-
-	private State getState() {
-		State cur, upd;
+	private ConfigSnapshot getState() {
+		ConfigSnapshot cur, upd;
 		do {
 			cur = state.get();
-			final State base = getBaseState();
+			final ConfigSnapshot base = getBaseState();
 			if (cur.baseState == base)
 				return cur;
-			upd = new State(cur.entryList, base);
+			upd = new ConfigSnapshot(cur.entryList, base);
 		} while (!state.compareAndSet(cur, upd));
 		return upd;
 	}
 
-	private State getBaseState() {
+	private ConfigSnapshot getBaseState() {
 		return baseConfig != null ? baseConfig.getState() : null;
 	}
 
@@ -683,11 +679,11 @@ public class Config {
 		final String s;
 
 		if (value >= GiB && (value % GiB) == 0)
-			s = String.valueOf(value / GiB) + " g";
+			s = String.valueOf(value / GiB) + " g"; //$NON-NLS-1$
 		else if (value >= MiB && (value % MiB) == 0)
-			s = String.valueOf(value / MiB) + " m";
+			s = String.valueOf(value / MiB) + " m"; //$NON-NLS-1$
 		else if (value >= KiB && (value % KiB) == 0)
-			s = String.valueOf(value / KiB) + " k";
+			s = String.valueOf(value / KiB) + " k"; //$NON-NLS-1$
 		else
 			s = String.valueOf(value);
 
@@ -714,7 +710,7 @@ public class Config {
 	 */
 	public void setBoolean(final String section, final String subsection,
 			final String name, final boolean value) {
-		setString(section, subsection, name, value ? "true" : "false");
+		setString(section, subsection, name, value ? "true" : "false"); //$NON-NLS-1$ //$NON-NLS-2$
 	}
 
 	/**
@@ -739,7 +735,11 @@ public class Config {
 	 */
 	public <T extends Enum<?>> void setEnum(final String section,
 			final String subsection, final String name, final T value) {
-		String n = value.name().toLowerCase().replace('_', ' ');
+		String n;
+		if (value instanceof ConfigEnum)
+			n = ((ConfigEnum) value).toConfigValue();
+		else
+			n = value.name().toLowerCase().replace('_', ' ');
 		setString(section, subsection, name, n);
 	}
 
@@ -792,20 +792,21 @@ public class Config {
 	 *            optional subsection value, e.g. a branch name
 	 */
 	public void unsetSection(String section, String subsection) {
-		State src, res;
+		ConfigSnapshot src, res;
 		do {
 			src = state.get();
 			res = unsetSection(src, section, subsection);
 		} while (!state.compareAndSet(src, res));
 	}
 
-	private State unsetSection(final State srcState, final String section,
+	private ConfigSnapshot unsetSection(final ConfigSnapshot srcState,
+			final String section,
 			final String subsection) {
 		final int max = srcState.entryList.size();
-		final ArrayList<Entry> r = new ArrayList<Entry>(max);
+		final ArrayList<ConfigLine> r = new ArrayList<ConfigLine>(max);
 
 		boolean lastWasMatch = false;
-		for (Entry e : srcState.entryList) {
+		for (ConfigLine e : srcState.entryList) {
 			if (e.match(section, subsection)) {
 				// Skip this record, it's for the section we are removing.
 				lastWasMatch = true;
@@ -839,7 +840,7 @@ public class Config {
 	 */
 	public void setStringList(final String section, final String subsection,
 			final String name, final List<String> values) {
-		State src, res;
+		ConfigSnapshot src, res;
 		do {
 			src = state.get();
 			res = replaceStringList(src, section, subsection, name, values);
@@ -848,10 +849,10 @@ public class Config {
 			fireConfigChangedEvent();
 	}
 
-	private State replaceStringList(final State srcState,
+	private ConfigSnapshot replaceStringList(final ConfigSnapshot srcState,
 			final String section, final String subsection, final String name,
 			final List<String> values) {
-		final List<Entry> entries = copy(srcState, values);
+		final List<ConfigLine> entries = copy(srcState, values);
 		int entryIndex = 0;
 		int valueIndex = 0;
 		int insertPosition = -1;
@@ -859,7 +860,7 @@ public class Config {
 		// Reset the first n Entry objects that match this input name.
 		//
 		while (entryIndex < entries.size() && valueIndex < values.size()) {
-			final Entry e = entries.get(entryIndex);
+			final ConfigLine e = entries.get(entryIndex);
 			if (e.match(section, subsection, name)) {
 				entries.set(entryIndex, e.forValue(values.get(valueIndex++)));
 				insertPosition = entryIndex + 1;
@@ -871,7 +872,7 @@ public class Config {
 		//
 		if (valueIndex == values.size() && entryIndex < entries.size()) {
 			while (entryIndex < entries.size()) {
-				final Entry e = entries.get(entryIndex++);
+				final ConfigLine e = entries.get(entryIndex++);
 				if (e.match(section, subsection, name))
 					entries.remove(--entryIndex);
 			}
@@ -891,14 +892,14 @@ public class Config {
 				// We didn't find any matching section header for this key,
 				// so we must create a new section header at the end.
 				//
-				final Entry e = new Entry();
+				final ConfigLine e = new ConfigLine();
 				e.section = section;
 				e.subsection = subsection;
 				entries.add(e);
 				insertPosition = entries.size();
 			}
 			while (valueIndex < values.size()) {
-				final Entry e = new Entry();
+				final ConfigLine e = new ConfigLine();
 				e.section = section;
 				e.subsection = subsection;
 				e.name = name;
@@ -910,20 +911,21 @@ public class Config {
 		return newState(entries);
 	}
 
-	private static List<Entry> copy(final State src, final List<String> values) {
+	private static List<ConfigLine> copy(final ConfigSnapshot src,
+			final List<String> values) {
 		// At worst we need to insert 1 line for each value, plus 1 line
 		// for a new section header. Assume that and allocate the space.
 		//
 		final int max = src.entryList.size() + values.size() + 1;
-		final ArrayList<Entry> r = new ArrayList<Entry>(max);
+		final ArrayList<ConfigLine> r = new ArrayList<ConfigLine>(max);
 		r.addAll(src.entryList);
 		return r;
 	}
 
-	private static int findSectionEnd(final List<Entry> entries,
+	private static int findSectionEnd(final List<ConfigLine> entries,
 			final String section, final String subsection) {
 		for (int i = 0; i < entries.size(); i++) {
-			Entry e = entries.get(i);
+			ConfigLine e = entries.get(i);
 			if (e.match(section, subsection, null)) {
 				i++;
 				while (i < entries.size()) {
@@ -944,7 +946,7 @@ public class Config {
 	 */
 	public String toText() {
 		final StringBuilder out = new StringBuilder();
-		for (final Entry e : state.get().entryList) {
+		for (final ConfigLine e : state.get().entryList) {
 			if (e.prefix != null)
 				out.append(e.prefix);
 			if (e.section != null && e.name == null) {
@@ -954,8 +956,8 @@ public class Config {
 					out.append(' ');
 					String escaped = escapeValue(e.subsection);
 					// make sure to avoid double quotes here
-					boolean quoted = escaped.startsWith("\"")
-							&& escaped.endsWith("\"");
+					boolean quoted = escaped.startsWith("\"") //$NON-NLS-1$
+							&& escaped.endsWith("\""); //$NON-NLS-1$
 					if (!quoted)
 						out.append('"');
 					out.append(escaped);
@@ -964,11 +966,11 @@ public class Config {
 				}
 				out.append(']');
 			} else if (e.section != null && e.name != null) {
-				if (e.prefix == null || "".equals(e.prefix))
+				if (e.prefix == null || "".equals(e.prefix)) //$NON-NLS-1$
 					out.append('\t');
 				out.append(e.name);
 				if (MAGIC_EMPTY_VALUE != e.value) {
-					out.append(" =");
+					out.append(" ="); //$NON-NLS-1$
 					if (e.value != null) {
 						out.append(' ');
 						out.append(escapeValue(e.value));
@@ -994,10 +996,10 @@ public class Config {
 	 *             made to {@code this}.
 	 */
 	public void fromText(final String text) throws ConfigInvalidException {
-		final List<Entry> newEntries = new ArrayList<Entry>();
+		final List<ConfigLine> newEntries = new ArrayList<ConfigLine>();
 		final StringReader in = new StringReader(text);
-		Entry last = null;
-		Entry e = new Entry();
+		ConfigLine last = null;
+		ConfigLine e = new ConfigLine();
 		for (;;) {
 			int input = in.read();
 			if (-1 == input)
@@ -1009,7 +1011,7 @@ public class Config {
 				newEntries.add(e);
 				if (e.section != null)
 					last = e;
-				e = new Entry();
+				e = new ConfigLine();
 
 			} else if (e.suffix != null) {
 				// Everything up until the end-of-line is in the suffix.
@@ -1022,7 +1024,7 @@ public class Config {
 			} else if (e.section == null && Character.isWhitespace(c)) {
 				// Save the leading whitespace (if any).
 				if (e.prefix == null)
-					e.prefix = "";
+					e.prefix = ""; //$NON-NLS-1$
 				e.prefix += c;
 
 			} else if ('[' == c) {
@@ -1035,7 +1037,7 @@ public class Config {
 				}
 				if (']' != input)
 					throw new ConfigInvalidException(JGitText.get().badGroupHeader);
-				e.suffix = "";
+				e.suffix = ""; //$NON-NLS-1$
 
 			} else if (last != null) {
 				// Read a value.
@@ -1043,7 +1045,7 @@ public class Config {
 				e.subsection = last.subsection;
 				in.reset();
 				e.name = readKeyName(in);
-				if (e.name.endsWith("\n")) {
+				if (e.name.endsWith("\n")) { //$NON-NLS-1$
 					e.name = e.name.substring(0, e.name.length() - 1);
 					e.value = MAGIC_EMPTY_VALUE;
 				} else
@@ -1056,12 +1058,14 @@ public class Config {
 		state.set(newState(newEntries));
 	}
 
-	private State newState() {
-		return new State(Collections.<Entry> emptyList(), getBaseState());
+	private ConfigSnapshot newState() {
+		return new ConfigSnapshot(Collections.<ConfigLine> emptyList(),
+				getBaseState());
 	}
 
-	private State newState(final List<Entry> entries) {
-		return new State(Collections.unmodifiableList(entries), getBaseState());
+	private ConfigSnapshot newState(final List<ConfigLine> entries) {
+		return new ConfigSnapshot(Collections.unmodifiableList(entries),
+				getBaseState());
 	}
 
 	/**
@@ -1219,7 +1223,9 @@ public class Config {
 					value.append('"');
 					continue;
 				default:
-					throw new ConfigInvalidException(MessageFormat.format(JGitText.get().badEscape, ((char) c)));
+					throw new ConfigInvalidException(MessageFormat.format(
+							JGitText.get().badEscape,
+							Character.valueOf(((char) c))));
 				}
 			}
 
@@ -1258,232 +1264,6 @@ public class Config {
 		T parse(Config cfg);
 	}
 
-	private static class SubsectionNames implements SectionParser<Set<String>> {
-		private final String section;
-
-		SubsectionNames(final String sectionName) {
-			section = sectionName;
-		}
-
-		public int hashCode() {
-			return section.hashCode();
-		}
-
-		public boolean equals(Object other) {
-			if (other instanceof SubsectionNames) {
-				return section.equals(((SubsectionNames) other).section);
-			}
-			return false;
-		}
-
-		public Set<String> parse(Config cfg) {
-			final Set<String> result = new LinkedHashSet<String>();
-			while (cfg != null) {
-				for (final Entry e : cfg.state.get().entryList) {
-					if (e.subsection != null && e.name == null
-							&& StringUtils.equalsIgnoreCase(section, e.section))
-						result.add(e.subsection);
-				}
-				cfg = cfg.baseConfig;
-			}
-			return Collections.unmodifiableSet(result);
-		}
-	}
-
-	private static class NamesInSection implements SectionParser<Set<String>> {
-		private final String section;
-
-		private final String subsection;
-
-		NamesInSection(final String sectionName, final String subSectionName) {
-			section = sectionName;
-			subsection = subSectionName;
-		}
-
-		@Override
-		public int hashCode() {
-			final int prime = 31;
-			int result = 1;
-			result = prime * result + section.hashCode();
-			result = prime * result
-					+ ((subsection == null) ? 0 : subsection.hashCode());
-			return result;
-		}
-
-		@Override
-		public boolean equals(Object obj) {
-			if (this == obj)
-				return true;
-			if (obj == null)
-				return false;
-			if (getClass() != obj.getClass())
-				return false;
-			NamesInSection other = (NamesInSection) obj;
-			if (!section.equals(other.section))
-				return false;
-			if (subsection == null) {
-				if (other.subsection != null)
-					return false;
-			} else if (!subsection.equals(other.subsection))
-				return false;
-			return true;
-		}
-
-		public Set<String> parse(Config cfg) {
-			final Map<String, String> m = new LinkedHashMap<String, String>();
-			while (cfg != null) {
-				for (final Entry e : cfg.state.get().entryList) {
-					if (e.name == null)
-						continue;
-					if (!StringUtils.equalsIgnoreCase(section, e.section))
-						continue;
-					if ((subsection == null && e.subsection == null)
-							|| (subsection != null && subsection
-									.equals(e.subsection))) {
-						String lc = StringUtils.toLowerCase(e.name);
-						if (!m.containsKey(lc))
-							m.put(lc, e.name);
-					}
-				}
-				cfg = cfg.baseConfig;
-			}
-			return new CaseFoldingSet(m);
-		}
-	}
-
-	private static class SectionNames implements SectionParser<Set<String>> {
-		public Set<String> parse(Config cfg) {
-			final Map<String, String> m = new LinkedHashMap<String, String>();
-			while (cfg != null) {
-				for (final Entry e : cfg.state.get().entryList) {
-					if (e.section != null) {
-						String lc = StringUtils.toLowerCase(e.section);
-						if (!m.containsKey(lc))
-							m.put(lc, e.section);
-					}
-				}
-				cfg = cfg.baseConfig;
-			}
-			return new CaseFoldingSet(m);
-		}
-	}
-
-	private static class CaseFoldingSet extends AbstractSet<String> {
-		private final Map<String, String> names;
-
-		CaseFoldingSet(Map<String, String> names) {
-			this.names = Collections.unmodifiableMap(names);
-		}
-
-		@Override
-		public boolean contains(Object needle) {
-			if (!(needle instanceof String))
-				return false;
-
-			String n = (String) needle;
-			return names.containsKey(n)
-					|| names.containsKey(StringUtils.toLowerCase(n));
-		}
-
-		@Override
-		public Iterator<String> iterator() {
-			return names.values().iterator();
-		}
-
-		@Override
-		public int size() {
-			return names.size();
-		}
-	}
-
-	private static class State {
-		final List<Entry> entryList;
-
-		final Map<Object, Object> cache;
-
-		final State baseState;
-
-		State(List<Entry> entries, State base) {
-			entryList = entries;
-			cache = new ConcurrentHashMap<Object, Object>(16, 0.75f, 1);
-			baseState = base;
-		}
-	}
-
-	/**
-	 * The configuration file entry
-	 */
-	private static class Entry {
-		/**
-		 * The text content before entry
-		 */
-		String prefix;
-
-		/**
-		 * The section name for the entry
-		 */
-		String section;
-
-		/**
-		 * Subsection name
-		 */
-		String subsection;
-
-		/**
-		 * The key name
-		 */
-		String name;
-
-		/**
-		 * The value
-		 */
-		String value;
-
-		/**
-		 * The text content after entry
-		 */
-		String suffix;
-
-		Entry forValue(final String newValue) {
-			final Entry e = new Entry();
-			e.prefix = prefix;
-			e.section = section;
-			e.subsection = subsection;
-			e.name = name;
-			e.value = newValue;
-			e.suffix = suffix;
-			return e;
-		}
-
-		boolean match(final String aSection, final String aSubsection,
-				final String aKey) {
-			return eqIgnoreCase(section, aSection)
-					&& eqSameCase(subsection, aSubsection)
-					&& eqIgnoreCase(name, aKey);
-		}
-
-		boolean match(final String aSection, final String aSubsection) {
-			return eqIgnoreCase(section, aSection)
-					&& eqSameCase(subsection, aSubsection);
-		}
-
-		private static boolean eqIgnoreCase(final String a, final String b) {
-			if (a == null && b == null)
-				return true;
-			if (a == null || b == null)
-				return false;
-			return StringUtils.equalsIgnoreCase(a, b);
-		}
-
-		private static boolean eqSameCase(final String a, final String b) {
-			if (a == null && b == null)
-				return true;
-			if (a == null || b == null)
-				return false;
-			return a.equals(b);
-		}
-	}
-
 	private static class StringReader {
 		private final char[] buf;
 
@@ -1505,5 +1285,28 @@ public class Config {
 		void reset() {
 			pos--;
 		}
+	}
+
+	/**
+	 * Converts enumeration values into configuration options and vice-versa,
+	 * allowing to match a config option with an enum value.
+	 *
+	 */
+	public static interface ConfigEnum {
+		/**
+		 * Converts enumeration value into a string to be save in config.
+		 *
+		 * @return the enum value as config string
+		 */
+		String toConfigValue();
+
+		/**
+		 * Checks if the given string matches with enum value.
+		 *
+		 * @param in
+		 *            the string to match
+		 * @return true if the given string matches enum value, false otherwise
+		 */
+		boolean matchConfigValue(String in);
 	}
 }

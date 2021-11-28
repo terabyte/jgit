@@ -45,4 +45,17 @@
        <Class name="org.eclipse.jgit.util.TemporaryBuffer$BlockInputStream" />
        <Bug pattern="UR_UNINIT_READ" />
      </Match>
+
+     <!-- Silence returning null for Boolean return type -->
+     <Match>
+       <Class name="org.eclipse.jgit.util.StringUtils" />
+       <Method name="toBooleanOrNull" />
+       <Bug pattern="NP_BOOLEAN_RETURN_NULL" />
+     </Match>
+
+     <!-- Transport initialization works like this -->
+     <Match>
+       <Class name="org.eclipse.jgit.transport.Transport" />
+       <Bug pattern="IC_SUPERCLASS_USES_SUBCLASS_DURING_INITIALIZATION" />
+     </Match>
 </FindBugsFilter>

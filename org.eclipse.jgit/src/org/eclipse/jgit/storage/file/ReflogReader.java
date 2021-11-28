@@ -51,10 +51,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-import org.eclipse.jgit.JGitText;
 import org.eclipse.jgit.lib.Constants;
-import org.eclipse.jgit.lib.ObjectId;
-import org.eclipse.jgit.lib.PersonIdent;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.util.IO;
 import org.eclipse.jgit.util.RawParseUtils;
@@ -63,79 +60,14 @@ import org.eclipse.jgit.util.RawParseUtils;
  * Utility for reading reflog entries
  */
 public class ReflogReader {
-	/**
-	 * Parsed reflog entry
-	 */
-	static public class Entry {
-		private ObjectId oldId;
-
-		private ObjectId newId;
-
-		private PersonIdent who;
-
-		private String comment;
-
-		Entry(byte[] raw, int pos) {
-			oldId = ObjectId.fromString(raw, pos);
-			pos += Constants.OBJECT_ID_STRING_LENGTH;
-			if (raw[pos++] != ' ')
-				throw new IllegalArgumentException(
-						JGitText.get().rawLogMessageDoesNotParseAsLogEntry);
-			newId = ObjectId.fromString(raw, pos);
-			pos += Constants.OBJECT_ID_STRING_LENGTH;
-			if (raw[pos++] != ' ') {
-				throw new IllegalArgumentException(
-						JGitText.get().rawLogMessageDoesNotParseAsLogEntry);
-			}
-			who = RawParseUtils.parsePersonIdentOnly(raw, pos);
-			int p0 = RawParseUtils.next(raw, pos, '\t');
-			if (p0 >= raw.length)
-				comment = ""; // personident has no \t, no comment present
-			else {
-				int p1 = RawParseUtils.nextLF(raw, p0);
-				comment = p1 > p0 ? RawParseUtils.decode(raw, p0, p1 - 1) : "";
-			}
-		}
-
-		/**
-		 * @return the commit id before the change
-		 */
-		public ObjectId getOldId() {
-			return oldId;
-		}
-
-		/**
-		 * @return the commit id after the change
-		 */
-		public ObjectId getNewId() {
-			return newId;
-		}
-
-		/**
-		 * @return user performin the change
-		 */
-		public PersonIdent getWho() {
-			return who;
-		}
-
-		/**
-		 * @return textual description of the change
-		 */
-		public String getComment() {
-			return comment;
-		}
-
-		@Override
-		public String toString() {
-			return "Entry[" + oldId.name() + ", " + newId.name() + ", " + getWho() + ", "
-					+ getComment() + "]";
-		}
-	}
-
 	private File logName;
 
-	ReflogReader(Repository db, String refname) {
-		logName = new File(db.getDirectory(), "logs/" + refname);
+	/**
+	 * @param db
+	 * @param refname
+	 */
+	public ReflogReader(Repository db, String refname) {
+		logName = new File(db.getDirectory(), Constants.LOGS + '/' + refname);
 	}
 
 	/**
@@ -144,26 +76,55 @@ public class ReflogReader {
 	 * @return the latest reflog entry, or null if no log
 	 * @throws IOException
 	 */
-	public Entry getLastEntry() throws IOException {
-		List<Entry> entries = getReverseEntries(1);
-		return entries.size() > 0 ? entries.get(0) : null;
+	public ReflogEntry getLastEntry() throws IOException {
+		return getReverseEntry(0);
 	}
 
 	/**
 	 * @return all reflog entries in reverse order
 	 * @throws IOException
 	 */
-	public List<Entry> getReverseEntries() throws IOException {
+	public List<ReflogEntry> getReverseEntries() throws IOException {
 		return getReverseEntries(Integer.MAX_VALUE);
 	}
 
 	/**
+	 * Get specific entry in the reflog relative to the last entry which is
+	 * considered entry zero.
+	 *
+	 * @param number
+	 * @return reflog entry or null if not found
+	 * @throws IOException
+	 */
+	public ReflogEntry getReverseEntry(int number) throws IOException {
+		if (number < 0)
+			throw new IllegalArgumentException();
+
+		final byte[] log;
+		try {
+			log = IO.readFully(logName);
+		} catch (FileNotFoundException e) {
+			return null;
+		}
+
+		int rs = RawParseUtils.prevLF(log, log.length);
+		int current = 0;
+		while (rs >= 0) {
+			rs = RawParseUtils.prevLF(log, rs);
+			if (number == current)
+				return new ReflogEntry(log, rs < 0 ? 0 : rs + 2);
+			current++;
+		}
+		return null;
+	}
+
+	/**
 	 * @param max
-	 *            max numer of entries to read
+	 *            max number of entries to read
 	 * @return all reflog entries in reverse order
 	 * @throws IOException
 	 */
-	public List<Entry> getReverseEntries(int max) throws IOException {
+	public List<ReflogEntry> getReverseEntries(int max) throws IOException {
 		final byte[] log;
 		try {
 			log = IO.readFully(logName);
@@ -172,10 +133,10 @@ public class ReflogReader {
 		}
 
 		int rs = RawParseUtils.prevLF(log, log.length);
-		List<Entry> ret = new ArrayList<Entry>();
+		List<ReflogEntry> ret = new ArrayList<ReflogEntry>();
 		while (rs >= 0 && max-- > 0) {
 			rs = RawParseUtils.prevLF(log, rs);
-			Entry entry = new Entry(log, rs < 0 ? 0 : rs + 2);
+			ReflogEntry entry = new ReflogEntry(log, rs < 0 ? 0 : rs + 2);
 			ret.add(entry);
 		}
 		return ret;

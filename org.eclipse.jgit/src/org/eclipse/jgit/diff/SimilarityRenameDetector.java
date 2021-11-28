@@ -52,9 +52,9 @@ import java.util.Arrays;
 import java.util.BitSet;
 import java.util.List;
 
-import org.eclipse.jgit.JGitText;
 import org.eclipse.jgit.diff.DiffEntry.ChangeType;
 import org.eclipse.jgit.diff.SimilarityIndex.TableFullException;
+import org.eclipse.jgit.internal.JGitText;
 import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.NullProgressMonitor;
 import org.eclipse.jgit.lib.ProgressMonitor;
@@ -320,8 +320,8 @@ class SimilarityRenameDetector {
 	}
 
 	static int nameScore(String a, String b) {
-	    int aDirLen = a.lastIndexOf("/") + 1;
-	    int bDirLen = b.lastIndexOf("/") + 1;
+	    int aDirLen = a.lastIndexOf("/") + 1; //$NON-NLS-1$
+	    int bDirLen = b.lastIndexOf("/") + 1; //$NON-NLS-1$
 
 	    int dirMin = Math.min(aDirLen, bDirLen);
 	    int dirMax = Math.max(aDirLen, bDirLen);

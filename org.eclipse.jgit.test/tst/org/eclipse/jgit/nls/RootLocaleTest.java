@@ -43,11 +43,9 @@
 
 package org.eclipse.jgit.nls;
 
-import org.eclipse.jgit.JGitText;
 import org.eclipse.jgit.awtui.UIText;
 import org.eclipse.jgit.console.ConsoleText;
-import org.eclipse.jgit.http.server.HttpServerText;
-import org.eclipse.jgit.iplog.IpLogText;
+import org.eclipse.jgit.internal.JGitText;
 import org.eclipse.jgit.pgm.CLIText;
 import org.junit.Before;
 import org.junit.Test;
@@ -64,11 +62,6 @@ public class RootLocaleTest {
 	}
 
 	@Test
-	public void testHttpServerText() {
-		NLS.getBundleFor(HttpServerText.class);
-	}
-
-	@Test
 	public void testConsoleText() {
 		NLS.getBundleFor(ConsoleText.class);
 	}
@@ -81,10 +74,5 @@ public class RootLocaleTest {
 	@Test
 	public void testUIText() {
 		NLS.getBundleFor(UIText.class);
-	}
-
-	@Test
-	public void testIpLogText() {
-		NLS.getBundleFor(IpLogText.class);
 	}
 }

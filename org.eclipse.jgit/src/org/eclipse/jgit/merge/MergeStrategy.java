@@ -47,7 +47,7 @@ package org.eclipse.jgit.merge;
 import java.text.MessageFormat;
 import java.util.HashMap;
 
-import org.eclipse.jgit.JGitText;
+import org.eclipse.jgit.internal.JGitText;
 import org.eclipse.jgit.lib.Repository;
 
 /**
@@ -58,10 +58,10 @@ import org.eclipse.jgit.lib.Repository;
  */
 public abstract class MergeStrategy {
 	/** Simple strategy that sets the output tree to the first input tree. */
-	public static final MergeStrategy OURS = new StrategyOneSided("ours", 0);
+	public static final MergeStrategy OURS = new StrategyOneSided("ours", 0); //$NON-NLS-1$
 
 	/** Simple strategy that sets the output tree to the second input tree. */
-	public static final MergeStrategy THEIRS = new StrategyOneSided("theirs", 1);
+	public static final MergeStrategy THEIRS = new StrategyOneSided("theirs", 1); //$NON-NLS-1$
 
 	/** Simple strategy to merge paths, without simultaneous edits. */
 	public static final ThreeWayMergeStrategy SIMPLE_TWO_WAY_IN_CORE = new StrategySimpleTwoWayInCore();

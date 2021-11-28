@@ -91,6 +91,60 @@ public abstract class ObjectInserter {
 		}
 	}
 
+	/** Wraps a delegate ObjectInserter. */
+	public static abstract class Filter extends ObjectInserter {
+		/** @return delegate ObjectInserter to handle all processing. */
+		protected abstract ObjectInserter delegate();
+
+		@Override
+		protected byte[] buffer() {
+			return delegate().buffer();
+		}
+
+		public ObjectId idFor(int type, byte[] data) {
+			return delegate().idFor(type, data);
+		}
+
+		public ObjectId idFor(int type, byte[] data, int off, int len) {
+			return delegate().idFor(type, data, off, len);
+		}
+
+		public ObjectId idFor(int objectType, long length, InputStream in)
+				throws IOException {
+			return delegate().idFor(objectType, length, in);
+		}
+
+		public ObjectId idFor(TreeFormatter formatter) {
+			return delegate().idFor(formatter);
+		}
+
+		public ObjectId insert(int type, byte[] data) throws IOException {
+			return delegate().insert(type, data);
+		}
+
+		public ObjectId insert(int type, byte[] data, int off, int len)
+				throws IOException {
+			return delegate().insert(type, data, off, len);
+		}
+
+		public ObjectId insert(int objectType, long length, InputStream in)
+				throws IOException {
+			return delegate().insert(objectType, length, in);
+		}
+
+		public PackParser newPackParser(InputStream in) throws IOException {
+			return delegate().newPackParser(in);
+		}
+
+		public void flush() throws IOException {
+			delegate().flush();
+		}
+
+		public void release() {
+			delegate().release();
+		}
+	}
+
 	/** Digest to compute the name of an object. */
 	private final MessageDigest digest;
 
@@ -102,11 +156,35 @@ public abstract class ObjectInserter {
 		digest = Constants.newMessageDigest();
 	}
 
-	/** @return a temporary byte array for use by the caller. */
+	/**
+	 * Obtain a temporary buffer for use by the ObjectInserter or its subclass.
+	 * <p>
+	 * This buffer is supplied by the ObjectInserter base class to itself and
+	 * its subclasses for the purposes of pulling data from a supplied
+	 * InputStream, passing it through a Deflater, or formatting the canonical
+	 * format of a small object like a small tree or commit.
+	 * <p>
+	 * <strong>This buffer IS NOT for translation such as auto-CRLF or content
+	 * filtering and must not be used for such purposes.</strong>
+	 * <p>
+	 * The returned buffer is small, around a few KiBs, and the size may change
+	 * between versions of JGit. Callers using this buffer must always check the
+	 * length of the returned array to ascertain how much space was provided.
+	 * <p>
+	 * There is a single buffer for each ObjectInserter, repeated calls to this
+	 * method will (usually) always return the same buffer. If the caller needs
+	 * more than one buffer, or needs a buffer of a larger size, it must manage
+	 * that buffer on its own.
+	 * <p>
+	 * The buffer is usually on first demand for a buffer.
+	 *
+	 * @return a temporary byte array for use by the caller.
+	 */
 	protected byte[] buffer() {
-		if (tempBuffer == null)
-			tempBuffer = new byte[8192];
-		return tempBuffer;
+		byte[] b = tempBuffer;
+		if (b == null)
+			tempBuffer = b = new byte[8192];
+		return b;
 	}
 
 	/** @return digest to help compute an ObjectId */

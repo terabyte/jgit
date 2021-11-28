@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011, Chris Aniszczyk <caniszczyk@gmail.com>
+ * Copyright (C) 2011-2012, Chris Aniszczyk <caniszczyk@gmail.com>
  * and other copyright owners as documented in the project's IP log.
  *
  * This program and the accompanying materials are made available
@@ -42,29 +42,34 @@
  */
 package org.eclipse.jgit.api;
 
+import static org.eclipse.jgit.api.ResetCommand.ResetType.HARD;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
 
 import org.eclipse.jgit.api.ResetCommand.ResetType;
-import org.eclipse.jgit.api.errors.ConcurrentRefUpdateException;
+import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.api.errors.JGitInternalException;
-import org.eclipse.jgit.api.errors.NoFilepatternException;
-import org.eclipse.jgit.api.errors.NoHeadException;
-import org.eclipse.jgit.api.errors.NoMessageException;
-import org.eclipse.jgit.api.errors.WrongRepositoryStateException;
 import org.eclipse.jgit.dircache.DirCache;
+import org.eclipse.jgit.dircache.DirCacheBuilder;
+import org.eclipse.jgit.dircache.DirCacheEntry;
 import org.eclipse.jgit.errors.AmbiguousObjectException;
 import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.RepositoryTestCase;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.treewalk.TreeWalk;
 import org.eclipse.jgit.util.FileUtils;
+import org.junit.Assert;
 import org.junit.Test;
 
 public class ResetCommandTest extends RepositoryTestCase {
@@ -73,17 +78,30 @@ public class ResetCommandTest extends RepositoryTestCase {
 
 	private RevCommit initialCommit;
 
+	private RevCommit secondCommit;
+
 	private File indexFile;
 
 	private File untrackedFile;
 
-	public void setupRepository() throws IOException, NoFilepatternException,
-			NoHeadException, NoMessageException, ConcurrentRefUpdateException,
-			JGitInternalException, WrongRepositoryStateException {
+	private DirCacheEntry prestage;
+
+	public void setupRepository() throws IOException, JGitInternalException,
+			GitAPIException {
 
 		// create initial commit
 		git = new Git(db);
 		initialCommit = git.commit().setMessage("initial commit").call();
+
+		// create nested file
+		File dir = new File(db.getWorkTree(), "dir");
+		FileUtils.mkdir(dir);
+		File nestedFile = new File(dir, "b.txt");
+		FileUtils.createNewFile(nestedFile);
+
+		PrintWriter nesterFileWriter = new PrintWriter(nestedFile);
+		nesterFileWriter.print("content");
+		nesterFileWriter.flush();
 
 		// create file
 		indexFile = new File(db.getWorkTree(), "a.txt");
@@ -93,13 +111,19 @@ public class ResetCommandTest extends RepositoryTestCase {
 		writer.flush();
 
 		// add file and commit it
-		git.add().addFilepattern("a.txt").call();
-		git.commit().setMessage("adding a.txt").call();
+		git.add().addFilepattern("dir").addFilepattern("a.txt").call();
+		secondCommit = git.commit().setMessage("adding a.txt and dir/b.txt")
+				.call();
+
+		prestage = DirCache.read(db.getIndexFile(), db.getFS()).getEntry(
+				indexFile.getName());
 
 		// modify file and add to index
 		writer.print("new content");
 		writer.close();
-		git.add().addFilepattern("a.txt").call();
+		nesterFileWriter.print("new content");
+		nesterFileWriter.close();
+		git.add().addFilepattern("a.txt").addFilepattern("dir").call();
 
 		// create a file not added to the index
 		untrackedFile = new File(db.getWorkTree(),
@@ -112,15 +136,14 @@ public class ResetCommandTest extends RepositoryTestCase {
 
 	@Test
 	public void testHardReset() throws JGitInternalException,
-			AmbiguousObjectException, IOException, NoFilepatternException,
-			NoHeadException, NoMessageException, ConcurrentRefUpdateException,
-			WrongRepositoryStateException {
+			AmbiguousObjectException, IOException, GitAPIException {
 		setupRepository();
+		ObjectId prevHead = db.resolve(Constants.HEAD);
 		git.reset().setMode(ResetType.HARD).setRef(initialCommit.getName())
 				.call();
 		// check if HEAD points to initial commit now
 		ObjectId head = db.resolve(Constants.HEAD);
-		assertTrue(head.equals(initialCommit));
+		assertEquals(initialCommit, head);
 		// check if files were removed
 		assertFalse(indexFile.exists());
 		assertTrue(untrackedFile.exists());
@@ -128,19 +151,36 @@ public class ResetCommandTest extends RepositoryTestCase {
 		String fileInIndexPath = indexFile.getAbsolutePath();
 		assertFalse(inHead(fileInIndexPath));
 		assertFalse(inIndex(indexFile.getName()));
+		assertReflog(prevHead, head);
+		assertEquals(prevHead, db.readOrigHead());
+	}
+
+	@Test
+	public void testResetToNonexistingHEAD() throws JGitInternalException,
+			AmbiguousObjectException, IOException, GitAPIException {
+
+		// create a file in the working tree of a fresh repo
+		git = new Git(db);
+		writeTrashFile("f", "content");
+
+		try {
+			git.reset().setRef(Constants.HEAD).call();
+			fail("Expected JGitInternalException didn't occur");
+		} catch (JGitInternalException e) {
+			// got the expected exception
+		}
 	}
 
 	@Test
 	public void testSoftReset() throws JGitInternalException,
-			AmbiguousObjectException, IOException, NoFilepatternException,
-			NoHeadException, NoMessageException, ConcurrentRefUpdateException,
-			WrongRepositoryStateException {
+			AmbiguousObjectException, IOException, GitAPIException {
 		setupRepository();
+		ObjectId prevHead = db.resolve(Constants.HEAD);
 		git.reset().setMode(ResetType.SOFT).setRef(initialCommit.getName())
 				.call();
 		// check if HEAD points to initial commit now
 		ObjectId head = db.resolve(Constants.HEAD);
-		assertTrue(head.equals(initialCommit));
+		assertEquals(initialCommit, head);
 		// check if files still exist
 		assertTrue(untrackedFile.exists());
 		assertTrue(indexFile.exists());
@@ -148,19 +188,20 @@ public class ResetCommandTest extends RepositoryTestCase {
 		String fileInIndexPath = indexFile.getAbsolutePath();
 		assertFalse(inHead(fileInIndexPath));
 		assertTrue(inIndex(indexFile.getName()));
+		assertReflog(prevHead, head);
+		assertEquals(prevHead, db.readOrigHead());
 	}
 
 	@Test
 	public void testMixedReset() throws JGitInternalException,
-			AmbiguousObjectException, IOException, NoFilepatternException,
-			NoHeadException, NoMessageException, ConcurrentRefUpdateException,
-			WrongRepositoryStateException {
+			AmbiguousObjectException, IOException, GitAPIException {
 		setupRepository();
+		ObjectId prevHead = db.resolve(Constants.HEAD);
 		git.reset().setMode(ResetType.MIXED).setRef(initialCommit.getName())
 				.call();
 		// check if HEAD points to initial commit now
 		ObjectId head = db.resolve(Constants.HEAD);
-		assertTrue(head.equals(initialCommit));
+		assertEquals(initialCommit, head);
 		// check if files still exist
 		assertTrue(untrackedFile.exists());
 		assertTrue(indexFile.exists());
@@ -168,6 +209,272 @@ public class ResetCommandTest extends RepositoryTestCase {
 		String fileInIndexPath = indexFile.getAbsolutePath();
 		assertFalse(inHead(fileInIndexPath));
 		assertFalse(inIndex(indexFile.getName()));
+
+		assertReflog(prevHead, head);
+		assertEquals(prevHead, db.readOrigHead());
+	}
+
+	@Test
+	public void testMixedResetRetainsSizeAndModifiedTime() throws Exception {
+		git = new Git(db);
+
+		writeTrashFile("a.txt", "a").setLastModified(
+				System.currentTimeMillis() - 60 * 1000);
+		assertNotNull(git.add().addFilepattern("a.txt").call());
+		assertNotNull(git.commit().setMessage("a commit").call());
+
+		writeTrashFile("b.txt", "b").setLastModified(
+				System.currentTimeMillis() - 60 * 1000);
+		assertNotNull(git.add().addFilepattern("b.txt").call());
+		RevCommit commit2 = git.commit().setMessage("b commit").call();
+		assertNotNull(commit2);
+
+		DirCache cache = db.readDirCache();
+
+		DirCacheEntry aEntry = cache.getEntry("a.txt");
+		assertNotNull(aEntry);
+		assertTrue(aEntry.getLength() > 0);
+		assertTrue(aEntry.getLastModified() > 0);
+
+		DirCacheEntry bEntry = cache.getEntry("b.txt");
+		assertNotNull(bEntry);
+		assertTrue(bEntry.getLength() > 0);
+		assertTrue(bEntry.getLastModified() > 0);
+
+		git.reset().setMode(ResetType.MIXED).setRef(commit2.getName()).call();
+
+		cache = db.readDirCache();
+
+		DirCacheEntry mixedAEntry = cache.getEntry("a.txt");
+		assertNotNull(mixedAEntry);
+		assertEquals(aEntry.getLastModified(), mixedAEntry.getLastModified());
+		assertEquals(aEntry.getLastModified(), mixedAEntry.getLastModified());
+
+		DirCacheEntry mixedBEntry = cache.getEntry("b.txt");
+		assertNotNull(mixedBEntry);
+		assertEquals(bEntry.getLastModified(), mixedBEntry.getLastModified());
+		assertEquals(bEntry.getLastModified(), mixedBEntry.getLastModified());
+	}
+
+	@Test
+	public void testMixedResetWithUnmerged() throws Exception {
+		git = new Git(db);
+
+		String file = "a.txt";
+		writeTrashFile(file, "data");
+		String file2 = "b.txt";
+		writeTrashFile(file2, "data");
+
+		git.add().addFilepattern(file).addFilepattern(file2).call();
+		git.commit().setMessage("commit").call();
+
+		DirCache index = db.lockDirCache();
+		DirCacheBuilder builder = index.builder();
+		builder.add(createEntry(file, FileMode.REGULAR_FILE, 1, ""));
+		builder.add(createEntry(file, FileMode.REGULAR_FILE, 2, ""));
+		builder.add(createEntry(file, FileMode.REGULAR_FILE, 3, ""));
+		assertTrue(builder.commit());
+
+		assertEquals("[a.txt, mode:100644, stage:1]"
+				+ "[a.txt, mode:100644, stage:2]"
+				+ "[a.txt, mode:100644, stage:3]",
+				indexState(0));
+
+		git.reset().setMode(ResetType.MIXED).call();
+
+		assertEquals("[a.txt, mode:100644]" + "[b.txt, mode:100644]",
+				indexState(0));
+	}
+
+	@Test
+	public void testPathsReset() throws Exception {
+		setupRepository();
+
+		DirCacheEntry preReset = DirCache.read(db.getIndexFile(), db.getFS())
+				.getEntry(indexFile.getName());
+		assertNotNull(preReset);
+
+		git.add().addFilepattern(untrackedFile.getName()).call();
+
+		// 'a.txt' has already been modified in setupRepository
+		// 'notAddedToIndex.txt' has been added to repository
+		git.reset().addPath(indexFile.getName())
+				.addPath(untrackedFile.getName()).call();
+
+		DirCacheEntry postReset = DirCache.read(db.getIndexFile(), db.getFS())
+				.getEntry(indexFile.getName());
+		assertNotNull(postReset);
+		Assert.assertNotSame(preReset.getObjectId(), postReset.getObjectId());
+		Assert.assertEquals(prestage.getObjectId(), postReset.getObjectId());
+
+		// check that HEAD hasn't moved
+		ObjectId head = db.resolve(Constants.HEAD);
+		assertEquals(secondCommit, head);
+		// check if files still exist
+		assertTrue(untrackedFile.exists());
+		assertTrue(indexFile.exists());
+		assertTrue(inHead(indexFile.getName()));
+		assertTrue(inIndex(indexFile.getName()));
+		assertFalse(inIndex(untrackedFile.getName()));
+	}
+
+	@Test
+	public void testPathsResetOnDirs() throws Exception {
+		setupRepository();
+
+		DirCacheEntry preReset = DirCache.read(db.getIndexFile(), db.getFS())
+				.getEntry("dir/b.txt");
+		assertNotNull(preReset);
+
+		git.add().addFilepattern(untrackedFile.getName()).call();
+
+		// 'dir/b.txt' has already been modified in setupRepository
+		git.reset().addPath("dir").call();
+
+		DirCacheEntry postReset = DirCache.read(db.getIndexFile(), db.getFS())
+				.getEntry("dir/b.txt");
+		assertNotNull(postReset);
+		Assert.assertNotSame(preReset.getObjectId(), postReset.getObjectId());
+
+		// check that HEAD hasn't moved
+		ObjectId head = db.resolve(Constants.HEAD);
+		assertEquals(secondCommit, head);
+		// check if files still exist
+		assertTrue(untrackedFile.exists());
+		assertTrue(inHead("dir/b.txt"));
+		assertTrue(inIndex("dir/b.txt"));
+	}
+
+	@Test
+	public void testPathsResetWithRef() throws Exception {
+		setupRepository();
+
+		DirCacheEntry preReset = DirCache.read(db.getIndexFile(), db.getFS())
+				.getEntry(indexFile.getName());
+		assertNotNull(preReset);
+
+		git.add().addFilepattern(untrackedFile.getName()).call();
+
+		// 'a.txt' has already been modified in setupRepository
+		// 'notAddedToIndex.txt' has been added to repository
+		// reset to the inital commit
+		git.reset().setRef(initialCommit.getName())
+				.addPath(indexFile.getName())
+				.addPath(untrackedFile.getName()).call();
+
+		// check that HEAD hasn't moved
+		ObjectId head = db.resolve(Constants.HEAD);
+		assertEquals(secondCommit, head);
+		// check if files still exist
+		assertTrue(untrackedFile.exists());
+		assertTrue(indexFile.exists());
+		assertTrue(inHead(indexFile.getName()));
+		assertFalse(inIndex(indexFile.getName()));
+		assertFalse(inIndex(untrackedFile.getName()));
+	}
+
+	@Test
+	public void testPathsResetWithUnmerged() throws Exception {
+		setupRepository();
+
+		String file = "a.txt";
+		writeTrashFile(file, "data");
+
+		git.add().addFilepattern(file).call();
+		git.commit().setMessage("commit").call();
+
+		DirCache index = db.lockDirCache();
+		DirCacheBuilder builder = index.builder();
+		builder.add(createEntry(file, FileMode.REGULAR_FILE, 1, ""));
+		builder.add(createEntry(file, FileMode.REGULAR_FILE, 2, ""));
+		builder.add(createEntry(file, FileMode.REGULAR_FILE, 3, ""));
+		builder.add(createEntry("b.txt", FileMode.REGULAR_FILE));
+		assertTrue(builder.commit());
+
+		assertEquals("[a.txt, mode:100644, stage:1]"
+				+ "[a.txt, mode:100644, stage:2]"
+				+ "[a.txt, mode:100644, stage:3]"
+				+ "[b.txt, mode:100644]",
+				indexState(0));
+
+		git.reset().addPath(file).call();
+
+		assertEquals("[a.txt, mode:100644]" + "[b.txt, mode:100644]",
+				indexState(0));
+	}
+
+	@Test
+	public void testHardResetOnTag() throws Exception {
+		setupRepository();
+		String tagName = "initialtag";
+		git.tag().setName(tagName).setObjectId(secondCommit)
+				.setMessage("message").call();
+
+		DirCacheEntry preReset = DirCache.read(db.getIndexFile(), db.getFS())
+				.getEntry(indexFile.getName());
+		assertNotNull(preReset);
+
+		git.add().addFilepattern(untrackedFile.getName()).call();
+
+		git.reset().setRef(tagName).setMode(HARD).call();
+
+		ObjectId head = db.resolve(Constants.HEAD);
+		assertEquals(secondCommit, head);
+	}
+
+	@Test
+	public void testHardResetAfterSquashMerge() throws Exception {
+		Git g = new Git(db);
+
+		writeTrashFile("file1", "file1");
+		g.add().addFilepattern("file1").call();
+		RevCommit first = g.commit().setMessage("initial commit").call();
+
+		assertTrue(new File(db.getWorkTree(), "file1").exists());
+		createBranch(first, "refs/heads/branch1");
+		checkoutBranch("refs/heads/branch1");
+
+		writeTrashFile("file2", "file2");
+		g.add().addFilepattern("file2").call();
+		g.commit().setMessage("second commit").call();
+		assertTrue(new File(db.getWorkTree(), "file2").exists());
+
+		checkoutBranch("refs/heads/master");
+
+		MergeResult result = g.merge().include(db.getRef("branch1"))
+				.setSquash(true).call();
+
+		assertEquals(MergeResult.MergeStatus.FAST_FORWARD_SQUASHED,
+				result.getMergeStatus());
+		assertNotNull(db.readSquashCommitMsg());
+
+		g.reset().setMode(ResetType.HARD).setRef(first.getName()).call();
+
+		assertNull(db.readSquashCommitMsg());
+	}
+
+	private void assertReflog(ObjectId prevHead, ObjectId head)
+			throws IOException {
+		// Check the reflog for HEAD
+		String actualHeadMessage = db.getReflogReader(Constants.HEAD)
+				.getLastEntry().getComment();
+		String expectedHeadMessage = head.getName() + ": updating HEAD";
+		assertEquals(expectedHeadMessage, actualHeadMessage);
+		assertEquals(head.getName(), db.getReflogReader(Constants.HEAD)
+				.getLastEntry().getNewId().getName());
+		assertEquals(prevHead.getName(), db.getReflogReader(Constants.HEAD)
+				.getLastEntry().getOldId().getName());
+
+		// The reflog for master contains the same as the one for HEAD
+		String actualMasterMessage = db.getReflogReader("refs/heads/master")
+				.getLastEntry().getComment();
+		String expectedMasterMessage = head.getName() + ": updating HEAD"; // yes!
+		assertEquals(expectedMasterMessage, actualMasterMessage);
+		assertEquals(head.getName(), db.getReflogReader(Constants.HEAD)
+				.getLastEntry().getNewId().getName());
+		assertEquals(prevHead.getName(), db
+				.getReflogReader("refs/heads/master").getLastEntry().getOldId()
+				.getName());
 	}
 
 	/**

@@ -47,9 +47,9 @@ package org.eclipse.jgit.treewalk.filter;
 import java.io.IOException;
 import java.util.Collection;
 
-import org.eclipse.jgit.JGitText;
 import org.eclipse.jgit.errors.IncorrectObjectTypeException;
 import org.eclipse.jgit.errors.MissingObjectException;
+import org.eclipse.jgit.internal.JGitText;
 import org.eclipse.jgit.treewalk.TreeWalk;
 
 /**
@@ -141,6 +141,7 @@ public abstract class AndTreeFilter extends TreeFilter {
 			return new Binary(a.clone(), b.clone());
 		}
 
+		@SuppressWarnings("nls")
 		@Override
 		public String toString() {
 			return "(" + a.toString() + " AND " + b.toString() + ")";
@@ -181,6 +182,7 @@ public abstract class AndTreeFilter extends TreeFilter {
 			return new List(s);
 		}
 
+		@SuppressWarnings("nls")
 		@Override
 		public String toString() {
 			final StringBuilder r = new StringBuilder();

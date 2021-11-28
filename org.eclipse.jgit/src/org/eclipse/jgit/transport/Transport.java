@@ -67,9 +67,9 @@ import java.util.Map;
 import java.util.Vector;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-import org.eclipse.jgit.JGitText;
 import org.eclipse.jgit.errors.NotSupportedException;
 import org.eclipse.jgit.errors.TransportException;
+import org.eclipse.jgit.internal.JGitText;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.NullProgressMonitor;
 import org.eclipse.jgit.lib.ProgressMonitor;
@@ -127,7 +127,7 @@ public abstract class Transport {
 
 	private static Enumeration<URL> catalogs(ClassLoader ldr) {
 		try {
-			String prefix = "META-INF/services/";
+			String prefix = "META-INF/services/"; //$NON-NLS-1$
 			String name = prefix + Transport.class.getName();
 			return ldr.getResources(name);
 		} catch (IOException err) {
@@ -139,7 +139,7 @@ public abstract class Transport {
 		BufferedReader br;
 		try {
 			InputStream urlIn = url.openStream();
-			br = new BufferedReader(new InputStreamReader(urlIn, "UTF-8"));
+			br = new BufferedReader(new InputStreamReader(urlIn, "UTF-8")); //$NON-NLS-1$
 		} catch (IOException err) {
 			// If we cannot read from the service list, go to the next.
 			//
@@ -149,8 +149,15 @@ public abstract class Transport {
 		try {
 			String line;
 			while ((line = br.readLine()) != null) {
-				if (line.length() > 0 && !line.startsWith("#"))
-					load(ldr, line);
+				line = line.trim();
+				if (line.length() == 0)
+					continue;
+				int comment = line.indexOf('#');
+				if (comment == 0)
+					continue;
+				if (comment != -1)
+					line = line.substring(0, comment).trim();
+				load(ldr, line);
 			}
 		} catch (IOException err) {
 			// If we failed during a read, ignore the error.
@@ -550,6 +557,29 @@ public abstract class Transport {
 	}
 
 	/**
+	 * Open a new transport with no local repository.
+	 *
+	 * @param uri
+	 * @return new Transport instance
+	 * @throws NotSupportedException
+	 * @throws TransportException
+	 */
+	public static Transport open(URIish uri) throws NotSupportedException, TransportException {
+		for (WeakReference<TransportProtocol> ref : protocols) {
+			TransportProtocol proto = ref.get();
+			if (proto == null) {
+				protocols.remove(ref);
+				continue;
+			}
+
+			if (proto.canHandle(uri, null, null))
+				return proto.open(uri);
+		}
+
+		throw new NotSupportedException(MessageFormat.format(JGitText.get().URINotSupported, uri));
+	}
+
+	/**
 	 * Convert push remote refs update specification from {@link RefSpec} form
 	 * to {@link RemoteRefUpdate}. Conversion expands wildcards by matching
 	 * source part to local refs. expectedOldObjectId in RemoteRefUpdate is
@@ -657,14 +687,14 @@ public abstract class Transport {
 	 * Acts as --tags.
 	 */
 	public static final RefSpec REFSPEC_TAGS = new RefSpec(
-			"refs/tags/*:refs/tags/*");
+			"refs/tags/*:refs/tags/*"); //$NON-NLS-1$
 
 	/**
 	 * Specification for push operation, to push all refs under refs/heads. Acts
 	 * as --all.
 	 */
 	public static final RefSpec REFSPEC_PUSH_ALL = new RefSpec(
-			"refs/heads/*:refs/heads/*");
+			"refs/heads/*:refs/heads/*"); //$NON-NLS-1$
 
 	/** The repository this transport fetches into, or pushes out of. */
 	protected final Repository local;
@@ -735,6 +765,18 @@ public abstract class Transport {
 		this.local = local;
 		this.uri = uri;
 		this.checkFetchedObjects = tc.isFsckObjects();
+		this.credentialsProvider = CredentialsProvider.getDefault();
+	}
+
+	/**
+	 * Create a minimal transport instance not tied to a single repository.
+	 *
+	 * @param uri
+	 */
+	protected Transport(final URIish uri) {
+		this.uri = uri;
+		this.local = null;
+		this.checkFetchedObjects = true;
 		this.credentialsProvider = CredentialsProvider.getDefault();
 	}
 

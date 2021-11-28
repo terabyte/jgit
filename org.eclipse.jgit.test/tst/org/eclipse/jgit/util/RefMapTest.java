@@ -454,7 +454,7 @@ public class RefMapTest {
 		Map.Entry<String, Ref> ent_b = itr.next();
 
 		assertEquals(ent_a.hashCode(), "A".hashCode());
-		assertTrue(ent_a.equals(ent_a));
+		assertEquals(ent_a, ent_a);
 		assertFalse(ent_a.equals(ent_b));
 
 		assertEquals(a.toString(), ent_a.toString());
@@ -480,7 +480,7 @@ public class RefMapTest {
 		assertEquals(1, map.size());
 	}
 
-	private RefList<Ref> toList(Ref... refs) {
+	private static RefList<Ref> toList(Ref... refs) {
 		RefList.Builder<Ref> b = new RefList.Builder<Ref>(refs.length);
 		b.addAll(refs, 0, refs.length);
 		return b.toRefList();

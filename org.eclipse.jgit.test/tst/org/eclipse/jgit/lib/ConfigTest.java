@@ -48,6 +48,7 @@
 
 package org.eclipse.jgit.lib;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -62,6 +63,7 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.Set;
 
+import org.eclipse.jgit.api.MergeCommand.FastForwardMode;
 import org.eclipse.jgit.errors.ConfigInvalidException;
 import org.eclipse.jgit.junit.MockSystemReader;
 import org.eclipse.jgit.util.FS;
@@ -75,16 +77,16 @@ public class ConfigTest {
 	@Test
 	public void test001_ReadBareKey() throws ConfigInvalidException {
 		final Config c = parse("[foo]\nbar\n");
-		assertEquals(true, c.getBoolean("foo", null, "bar", false));
+		assertTrue(c.getBoolean("foo", null, "bar", false));
 		assertEquals("", c.getString("foo", null, "bar"));
 	}
 
 	@Test
 	public void test002_ReadWithSubsection() throws ConfigInvalidException {
 		final Config c = parse("[foo \"zip\"]\nbar\n[foo \"zap\"]\nbar=false\nn=3\n");
-		assertEquals(true, c.getBoolean("foo", "zip", "bar", false));
+		assertTrue(c.getBoolean("foo", "zip", "bar", false));
 		assertEquals("", c.getString("foo","zip", "bar"));
-		assertEquals(false, c.getBoolean("foo", "zap", "bar", true));
+		assertFalse(c.getBoolean("foo", "zap", "bar", true));
 		assertEquals("false", c.getString("foo", "zap", "bar"));
 		assertEquals(3, c.getInt("foo", "zap", "n", 4));
 		assertEquals(4, c.getInt("foo", "zap","m", 4));
@@ -117,7 +119,7 @@ public class ConfigTest {
 
 		final Object[] expArr = values.toArray();
 		final String[] actArr = c.getStringList("my", null, "somename");
-		assertTrue(Arrays.equals(expArr, actArr));
+		assertArrayEquals(expArr, actArr);
 
 		final String expText = "[my]\n\tsomename = value1\n\tsomename = value2\n";
 		assertEquals(expText, c.toText());
@@ -126,7 +128,7 @@ public class ConfigTest {
 	@Test
 	public void test006_readCaseInsensitive() throws ConfigInvalidException {
 		final Config c = parse("[Foo]\nBar\n");
-		assertEquals(true, c.getBoolean("foo", null, "bar", false));
+		assertTrue(c.getBoolean("foo", null, "bar", false));
 		assertEquals("", c.getString("foo", null, "bar"));
 	}
 
@@ -288,6 +290,28 @@ public class ConfigTest {
 
 		c = parse("[s \"b\"]\n\tc = one two\n");
 		assertSame(TestEnum.ONE_TWO, c.getEnum("s", "b", "c", TestEnum.ONE_TWO));
+
+		c = parse("[s \"b\"]\n\tc = one-two\n");
+		assertSame(TestEnum.ONE_TWO, c.getEnum("s", "b", "c", TestEnum.ONE_TWO));
+	}
+
+	@Test
+	public void testGetInvalidEnum() throws ConfigInvalidException {
+		Config c = parse("[a]\n\tb = invalid\n");
+		try {
+			c.getEnum("a", null, "b", TestEnum.ONE_TWO);
+			fail();
+		} catch (IllegalArgumentException e) {
+			assertEquals("Invalid value: a.b=invalid", e.getMessage());
+		}
+
+		c = parse("[a \"b\"]\n\tc = invalid\n");
+		try {
+			c.getEnum("a", "b", "c", TestEnum.ONE_TWO);
+			fail();
+		} catch (IllegalArgumentException e) {
+			assertEquals("Invalid value: a.b.c=invalid", e.getMessage());
+		}
 	}
 
 	@Test
@@ -295,6 +319,74 @@ public class ConfigTest {
 		final Config c = new Config();
 		c.setEnum("s", "b", "c", TestEnum.ONE_TWO);
 		assertEquals("[s \"b\"]\n\tc = one two\n", c.toText());
+	}
+
+	@Test
+	public void testGetFastForwardMergeoptions() throws ConfigInvalidException {
+		Config c = new Config(null); // not set
+		assertSame(FastForwardMode.FF, c.getEnum(
+				ConfigConstants.CONFIG_BRANCH_SECTION, "side",
+				ConfigConstants.CONFIG_KEY_MERGEOPTIONS, FastForwardMode.FF));
+		c = parse("[branch \"side\"]\n\tmergeoptions = --ff-only\n");
+		assertSame(FastForwardMode.FF_ONLY, c.getEnum(
+				ConfigConstants.CONFIG_BRANCH_SECTION, "side",
+				ConfigConstants.CONFIG_KEY_MERGEOPTIONS,
+				FastForwardMode.FF_ONLY));
+		c = parse("[branch \"side\"]\n\tmergeoptions = --ff\n");
+		assertSame(FastForwardMode.FF, c.getEnum(
+				ConfigConstants.CONFIG_BRANCH_SECTION, "side",
+				ConfigConstants.CONFIG_KEY_MERGEOPTIONS, FastForwardMode.FF));
+		c = parse("[branch \"side\"]\n\tmergeoptions = --no-ff\n");
+		assertSame(FastForwardMode.NO_FF, c.getEnum(
+				ConfigConstants.CONFIG_BRANCH_SECTION, "side",
+				ConfigConstants.CONFIG_KEY_MERGEOPTIONS, FastForwardMode.NO_FF));
+	}
+
+	@Test
+	public void testSetFastForwardMergeoptions() {
+		final Config c = new Config();
+		c.setEnum("branch", "side", "mergeoptions", FastForwardMode.FF);
+		assertEquals("[branch \"side\"]\n\tmergeoptions = --ff\n", c.toText());
+		c.setEnum("branch", "side", "mergeoptions", FastForwardMode.FF_ONLY);
+		assertEquals("[branch \"side\"]\n\tmergeoptions = --ff-only\n",
+				c.toText());
+		c.setEnum("branch", "side", "mergeoptions", FastForwardMode.NO_FF);
+		assertEquals("[branch \"side\"]\n\tmergeoptions = --no-ff\n",
+				c.toText());
+	}
+
+	@Test
+	public void testGetFastForwardMerge() throws ConfigInvalidException {
+		Config c = new Config(null); // not set
+		assertSame(FastForwardMode.Merge.TRUE, c.getEnum(
+				ConfigConstants.CONFIG_KEY_MERGE, null,
+				ConfigConstants.CONFIG_KEY_FF, FastForwardMode.Merge.TRUE));
+		c = parse("[merge]\n\tff = only\n");
+		assertSame(FastForwardMode.Merge.ONLY, c.getEnum(
+				ConfigConstants.CONFIG_KEY_MERGE, null,
+				ConfigConstants.CONFIG_KEY_FF, FastForwardMode.Merge.ONLY));
+		c = parse("[merge]\n\tff = true\n");
+		assertSame(FastForwardMode.Merge.TRUE, c.getEnum(
+				ConfigConstants.CONFIG_KEY_MERGE, null,
+				ConfigConstants.CONFIG_KEY_FF, FastForwardMode.Merge.TRUE));
+		c = parse("[merge]\n\tff = false\n");
+		assertSame(FastForwardMode.Merge.FALSE, c.getEnum(
+				ConfigConstants.CONFIG_KEY_MERGE, null,
+				ConfigConstants.CONFIG_KEY_FF, FastForwardMode.Merge.FALSE));
+	}
+
+	@Test
+	public void testSetFastForwardMerge() {
+		final Config c = new Config();
+		c.setEnum("merge", null, "ff",
+				FastForwardMode.Merge.valueOf(FastForwardMode.FF));
+		assertEquals("[merge]\n\tff = true\n", c.toText());
+		c.setEnum("merge", null, "ff",
+				FastForwardMode.Merge.valueOf(FastForwardMode.FF_ONLY));
+		assertEquals("[merge]\n\tff = only\n", c.toText());
+		c.setEnum("merge", null, "ff",
+				FastForwardMode.Merge.valueOf(FastForwardMode.NO_FF));
+		assertEquals("[merge]\n\tff = false\n", c.toText());
 	}
 
 	@Test
@@ -414,9 +506,9 @@ public class ConfigTest {
 				names.contains("repositoryformatversion"));
 
 		Iterator<String> itr = names.iterator();
-		assertEquals("repositoryFormatVersion", itr.next());
 		assertEquals("filemode", itr.next());
 		assertEquals("logAllRefUpdates", itr.next());
+		assertEquals("repositoryFormatVersion", itr.next());
 		assertFalse(itr.hasNext());
 	}
 
@@ -464,17 +556,18 @@ public class ConfigTest {
 		assertEquals(result, config.toText());
 	}
 
-	private void assertReadLong(long exp) throws ConfigInvalidException {
+	private static void assertReadLong(long exp) throws ConfigInvalidException {
 		assertReadLong(exp, String.valueOf(exp));
 	}
 
-	private void assertReadLong(long exp, String act)
+	private static void assertReadLong(long exp, String act)
 			throws ConfigInvalidException {
 		final Config c = parse("[s]\na = " + act + "\n");
 		assertEquals(exp, c.getLong("s", null, "a", 0L));
 	}
 
-	private Config parse(final String content) throws ConfigInvalidException {
+	private static Config parse(final String content)
+			throws ConfigInvalidException {
 		final Config c = new Config(null);
 		c.fromText(content);
 		return c;

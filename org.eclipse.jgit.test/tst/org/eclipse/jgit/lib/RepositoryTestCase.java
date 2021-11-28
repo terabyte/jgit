@@ -58,10 +58,13 @@ import java.io.Reader;
 import java.util.Map;
 import java.util.TreeSet;
 
+import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.dircache.DirCache;
 import org.eclipse.jgit.dircache.DirCacheBuilder;
 import org.eclipse.jgit.dircache.DirCacheCheckout;
 import org.eclipse.jgit.dircache.DirCacheEntry;
+import org.eclipse.jgit.junit.JGitTestUtil;
 import org.eclipse.jgit.junit.LocalDiskRepositoryTestCase;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevWalk;
@@ -98,14 +101,21 @@ public abstract class RepositoryTestCase extends LocalDiskRepositoryTestCase {
 
 	protected File writeTrashFile(final String name, final String data)
 			throws IOException {
-		File path = new File(db.getWorkTree(), name);
-		write(path, data);
-		return path;
+		return JGitTestUtil.writeTrashFile(db, name, data);
+	}
+
+	protected File writeTrashFile(final String subdir, final String name,
+			final String data)
+			throws IOException {
+		return JGitTestUtil.writeTrashFile(db, subdir, name, data);
+	}
+
+	protected String read(final String name) throws IOException {
+		return JGitTestUtil.read(db, name);
 	}
 
 	protected void deleteTrashFile(final String name) throws IOException {
-		File path = new File(db.getWorkTree(), name);
-		FileUtils.delete(path);
+		JGitTestUtil.deleteTrashFile(db, name);
 	}
 
 	protected static void checkFile(File f, final String checkData)
@@ -361,6 +371,8 @@ public abstract class RepositoryTestCase extends LocalDiskRepositoryTestCase {
 	public static long fsTick(File lastFile) throws InterruptedException,
 			IOException {
 		long sleepTime = 1;
+		if (lastFile != null && !lastFile.exists())
+			throw new FileNotFoundException(lastFile.getPath());
 		File tmp = File.createTempFile("FileTreeIteratorWithTimeControl", null);
 		try {
 			long startTime = (lastFile == null) ? tmp.lastModified() : lastFile
@@ -398,5 +410,85 @@ public abstract class RepositoryTestCase extends LocalDiskRepositoryTestCase {
 		// update the HEAD
 		RefUpdate refUpdate = db.updateRef(Constants.HEAD);
 		refUpdate.link(branchName);
+	}
+
+	/**
+	 * Writes a number of files in the working tree. The first content specified
+	 * will be written into a file named '0', the second into a file named "1"
+	 * and so on. If <code>null</code> is specified as content then this file is
+	 * skipped.
+	 *
+	 * @param ensureDistinctTimestamps
+	 *            if set to <code>true</code> then between two write operations
+	 *            this method will wait to ensure that the second file will get
+	 *            a different lastmodification timestamp than the first file.
+	 * @param contents
+	 *            the contents which should be written into the files
+	 * @return the File object associated to the last written file.
+	 * @throws IOException
+	 * @throws InterruptedException
+	 */
+	protected File writeTrashFiles(boolean ensureDistinctTimestamps,
+			String... contents)
+			throws IOException, InterruptedException {
+				File f = null;
+				for (int i = 0; i < contents.length; i++)
+					if (contents[i] != null) {
+						if (ensureDistinctTimestamps && (f != null))
+							fsTick(f);
+						f = writeTrashFile(Integer.toString(i), contents[i]);
+					}
+				return f;
+			}
+
+	/**
+	 * Commit a file with the specified contents on the specified branch,
+	 * creating the branch if it didn't exist before.
+	 * <p>
+	 * It switches back to the original branch after the commit if there was
+	 * one.
+	 *
+	 * @param filename
+	 * @param contents
+	 * @param branch
+	 * @return the created commit
+	 */
+	protected RevCommit commitFile(String filename, String contents, String branch) {
+		try {
+			Git git = new Git(db);
+			String originalBranch = git.getRepository().getFullBranch();
+			if (git.getRepository().getRef(branch) == null)
+				git.branchCreate().setName(branch).call();
+			git.checkout().setName(branch).call();
+			writeTrashFile(filename, contents);
+			git.add().addFilepattern(filename).call();
+			RevCommit commit = git.commit()
+					.setMessage(branch + ": " + filename).call();
+			if (originalBranch != null)
+				git.checkout().setName(originalBranch).call();
+			return commit;
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		} catch (GitAPIException e) {
+			throw new RuntimeException(e);
+		}
+	}
+
+	protected DirCacheEntry createEntry(final String path, final FileMode mode) {
+		return createEntry(path, mode, DirCacheEntry.STAGE_0, path);
+	}
+
+	protected DirCacheEntry createEntry(final String path, final FileMode mode,
+			final String content) {
+		return createEntry(path, mode, DirCacheEntry.STAGE_0, content);
+	}
+
+	protected DirCacheEntry createEntry(final String path, final FileMode mode,
+			final int stage, final String content) {
+		final DirCacheEntry entry = new DirCacheEntry(path, stage);
+		entry.setFileMode(mode);
+		entry.setObjectId(new ObjectInserter.Formatter().idFor(
+				Constants.OBJ_BLOB, Constants.encode(content)));
+		return entry;
 	}
 }

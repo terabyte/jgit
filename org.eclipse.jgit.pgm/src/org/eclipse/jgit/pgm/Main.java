@@ -124,17 +124,38 @@ public class Main {
 				err.printStackTrace();
 			System.exit(128);
 		} catch (Exception err) {
+			// Try to detect errno == EPIPE and exit normally if that happens
+			// There may be issues with operating system versions and locale,
+			// but we can probably assume that these messages will not be thrown
+			// under other circumstances.
+			if (err.getClass() == IOException.class) {
+				// Linux, OS X
+				if (err.getMessage().equals("Broken pipe")) //$NON-NLS-1$
+					System.exit(0);
+				// Windows
+				if (err.getMessage().equals("The pipe is being closed")) //$NON-NLS-1$
+					System.exit(0);
+			}
 			if (!showStackTrace && err.getCause() != null
 					&& err instanceof TransportException)
 				System.err.println(MessageFormat.format(CLIText.get().fatalError, err.getCause().getMessage()));
 
-			if (err.getClass().getName().startsWith("org.eclipse.jgit.errors.")) {
+			if (err.getClass().getName().startsWith("org.eclipse.jgit.errors.")) { //$NON-NLS-1$
 				System.err.println(MessageFormat.format(CLIText.get().fatalError, err.getMessage()));
 				if (showStackTrace)
 					err.printStackTrace();
 				System.exit(128);
 			}
 			err.printStackTrace();
+			System.exit(1);
+		}
+		if (System.out.checkError()) {
+			System.err.println(CLIText.get().unknownIoErrorStdout);
+			System.exit(1);
+		}
+		if (System.err.checkError()) {
+			// No idea how to present an error here, most likely disk full or
+			// broken pipe
 			System.exit(1);
 		}
 	}
@@ -154,7 +175,7 @@ public class Main {
 
 		if (argv.length == 0 || help) {
 			final String ex = clp.printExample(ExampleMode.ALL, CLIText.get().resourceBundle());
-			writer.println("jgit" + ex + " command [ARG ...]");
+			writer.println("jgit" + ex + " command [ARG ...]"); //$NON-NLS-1$
 			if (help) {
 				writer.println();
 				clp.printUsage(writer, CLIText.get().resourceBundle());
@@ -190,8 +211,8 @@ public class Main {
 		try {
 			cmd.execute(arguments.toArray(new String[arguments.size()]));
 		} finally {
-			if (cmd.out != null)
-				cmd.out.flush();
+			if (cmd.outw != null)
+				cmd.outw.flush();
 		}
 	}
 
@@ -217,8 +238,8 @@ public class Main {
 
 	private static boolean installConsole() {
 		try {
-			install("org.eclipse.jgit.console.ConsoleAuthenticator");
-			install("org.eclipse.jgit.console.ConsoleCredentialsProvider");
+			install("org.eclipse.jgit.console.ConsoleAuthenticator"); //$NON-NLS-1$
+			install("org.eclipse.jgit.console.ConsoleCredentialsProvider"); //$NON-NLS-1$
 			return true;
 		} catch (ClassNotFoundException e) {
 			return false;
@@ -244,7 +265,7 @@ public class Main {
 			throws IllegalAccessException, InvocationTargetException,
 			NoSuchMethodException, ClassNotFoundException {
 		try {
-		Class.forName(name).getMethod("install").invoke(null);
+		Class.forName(name).getMethod("install").invoke(null); //$NON-NLS-1$
 		} catch (InvocationTargetException e) {
 			if (e.getCause() instanceof RuntimeException)
 				throw (RuntimeException) e.getCause();
@@ -267,23 +288,23 @@ public class Main {
 	 *             the value in <code>http_proxy</code> is unsupportable.
 	 */
 	private static void configureHttpProxy() throws MalformedURLException {
-		final String s = System.getenv("http_proxy");
-		if (s == null || s.equals(""))
+		final String s = System.getenv("http_proxy"); //$NON-NLS-1$
+		if (s == null || s.equals("")) //$NON-NLS-1$
 			return;
 
-		final URL u = new URL((s.indexOf("://") == -1) ? "http://" + s : s);
-		if (!"http".equals(u.getProtocol()))
+		final URL u = new URL((s.indexOf("://") == -1) ? "http://" + s : s); //$NON-NLS-1$ //$NON-NLS-2$
+		if (!"http".equals(u.getProtocol())) //$NON-NLS-1$
 			throw new MalformedURLException(MessageFormat.format(CLIText.get().invalidHttpProxyOnlyHttpSupported, s));
 
 		final String proxyHost = u.getHost();
 		final int proxyPort = u.getPort();
 
-		System.setProperty("http.proxyHost", proxyHost);
+		System.setProperty("http.proxyHost", proxyHost); //$NON-NLS-1$
 		if (proxyPort > 0)
-			System.setProperty("http.proxyPort", String.valueOf(proxyPort));
+			System.setProperty("http.proxyPort", String.valueOf(proxyPort)); //$NON-NLS-1$
 
 		final String userpass = u.getUserInfo();
-		if (userpass != null && userpass.contains(":")) {
+		if (userpass != null && userpass.contains(":")) { //$NON-NLS-1$
 			final int c = userpass.indexOf(':');
 			final String user = userpass.substring(0, c);
 			final String pass = userpass.substring(c + 1);

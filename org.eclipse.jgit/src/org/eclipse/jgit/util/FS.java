@@ -46,9 +46,12 @@ package org.eclipse.jgit.util;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
+import java.util.Arrays;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Abstraction to support various file system operations not in Java. */
 public abstract class FS {
@@ -86,7 +89,7 @@ public abstract class FS {
 	 * @return detected file system abstraction
 	 */
 	public static FS detect(Boolean cygwinUsed) {
-		if (FS_Win32.isWin32()) {
+		if (SystemReader.getInstance().isWindows()) {
 			if (cygwinUsed == null)
 				cygwinUsed = Boolean.valueOf(FS_Win32_Cygwin.isCygwin());
 			if (cygwinUsed.booleanValue())
@@ -131,6 +134,13 @@ public abstract class FS {
 	 *         executable bit information; false otherwise.
 	 */
 	public abstract boolean supportsExecute();
+
+	/**
+	 * Is this file system case sensitive
+	 *
+	 * @return true if this implementation is case sensitive
+	 */
+	public abstract boolean isCaseSensitive();
 
 	/**
 	 * Determine if the file is executable (or not).
@@ -233,7 +243,7 @@ public abstract class FS {
 		final String home = AccessController
 				.doPrivileged(new PrivilegedAction<String>() {
 					public String run() {
-						return System.getProperty("user.home");
+						return System.getProperty("user.home"); //$NON-NLS-1$
 					}
 				});
 		if (home == null || home.length() == 0)
@@ -241,7 +251,20 @@ public abstract class FS {
 		return new File(home).getAbsoluteFile();
 	}
 
+	/**
+	 * Searches the given path to see if it contains one of the given files.
+	 * Returns the first it finds. Returns null if not found or if path is null.
+	 *
+	 * @param path
+	 *            List of paths to search separated by File.pathSeparator
+	 * @param lookFor
+	 *            Files to search for in the given path
+	 * @return the first match found, or null
+	 **/
 	static File searchPath(final String path, final String... lookFor) {
+		if (path == null)
+			return null;
+
 		for (final String p : path.split(File.pathSeparator)) {
 			for (String command : lookFor) {
 				final File e = new File(p, command);
@@ -263,33 +286,84 @@ public abstract class FS {
 	 * @return the one-line output of the command
 	 */
 	protected static String readPipe(File dir, String[] command, String encoding) {
+		final boolean debug = Boolean.parseBoolean(SystemReader.getInstance()
+				.getProperty("jgit.fs.debug")); //$NON-NLS-1$
 		try {
+			if (debug)
+				System.err.println("readpipe " + Arrays.asList(command) + "," //$NON-NLS-1$ //$NON-NLS-2$
+						+ dir);
 			final Process p = Runtime.getRuntime().exec(command, null, dir);
 			final BufferedReader lineRead = new BufferedReader(
 					new InputStreamReader(p.getInputStream(), encoding));
+			p.getOutputStream().close();
+			final AtomicBoolean gooblerFail = new AtomicBoolean(false);
+			Thread gobbler = new Thread() {
+				public void run() {
+					InputStream is = p.getErrorStream();
+					try {
+						int ch;
+						if (debug)
+							while ((ch = is.read()) != -1)
+								System.err.print((char) ch);
+						else
+							while (is.read() != -1) {
+								// ignore
+							}
+					} catch (IOException e) {
+						// Just print on stderr for debugging
+						if (debug)
+							e.printStackTrace(System.err);
+						gooblerFail.set(true);
+					}
+					try {
+						is.close();
+					} catch (IOException e) {
+						// Just print on stderr for debugging
+						if (debug)
+							e.printStackTrace(System.err);
+						gooblerFail.set(true);
+					}
+				}
+			};
+			gobbler.start();
 			String r = null;
 			try {
 				r = lineRead.readLine();
+				if (debug) {
+					System.err.println("readpipe may return '" + r + "'"); //$NON-NLS-1$ //$NON-NLS-2$
+					System.err.println("(ignoring remaing output:"); //$NON-NLS-1$
+				}
+				String l;
+				while ((l = lineRead.readLine()) != null) {
+					if (debug)
+						System.err.println(l);
+				}
 			} finally {
-				p.getOutputStream().close();
 				p.getErrorStream().close();
 				lineRead.close();
 			}
 
 			for (;;) {
 				try {
-					if (p.waitFor() == 0 && r != null && r.length() > 0)
+					int rc = p.waitFor();
+					gobbler.join();
+					if (rc == 0 && r != null && r.length() > 0
+							&& !gooblerFail.get())
 						return r;
+					if (debug)
+						System.err.println("readpipe rc=" + rc); //$NON-NLS-1$
 					break;
 				} catch (InterruptedException ie) {
 					// Stop bothering me, I have a zombie to reap.
 				}
 			}
 		} catch (IOException e) {
-			if (SystemReader.getInstance().getProperty("jgit.fs.debug") != null)
+			if (debug)
 				System.err.println(e);
 			// Ignore error (but report)
 		}
+		if (debug)
+			System.err.println("readpipe returns null"); //$NON-NLS-1$
 		return null;
 	}
 
@@ -298,7 +372,7 @@ public abstract class FS {
 		Holder<File> p = gitPrefix;
 		if (p == null) {
 			String overrideGitPrefix = SystemReader.getInstance().getProperty(
-					"jgit.gitprefix");
+					"jgit.gitprefix"); //$NON-NLS-1$
 			if (overrideGitPrefix != null)
 				p = new Holder<File>(new File(overrideGitPrefix));
 			else

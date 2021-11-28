@@ -45,21 +45,23 @@ package org.eclipse.jgit.api;
 
 import java.io.IOException;
 import java.text.MessageFormat;
+import java.util.Arrays;
 
-import org.eclipse.jgit.JGitText;
 import org.eclipse.jgit.api.errors.DetachedHeadException;
+import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.api.errors.InvalidRefNameException;
 import org.eclipse.jgit.api.errors.JGitInternalException;
 import org.eclipse.jgit.api.errors.RefAlreadyExistsException;
 import org.eclipse.jgit.api.errors.RefNotFoundException;
+import org.eclipse.jgit.internal.JGitText;
 import org.eclipse.jgit.lib.ConfigConstants;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Ref;
 import org.eclipse.jgit.lib.RefRename;
+import org.eclipse.jgit.lib.RefUpdate.Result;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.lib.StoredConfig;
-import org.eclipse.jgit.lib.RefUpdate.Result;
 
 /**
  * Used to rename branches.
@@ -93,20 +95,20 @@ public class RenameBranchCommand extends GitCommand<Ref> {
 	 *             if rename is tried without specifying the old name and HEAD
 	 *             is detached
 	 */
-	public Ref call() throws RefNotFoundException, InvalidRefNameException,
+	public Ref call() throws GitAPIException, RefNotFoundException, InvalidRefNameException,
 			RefAlreadyExistsException, DetachedHeadException {
 		checkCallable();
 
 		if (newName == null)
 			throw new InvalidRefNameException(MessageFormat.format(JGitText
-					.get().branchNameInvalid, "<null>"));
+					.get().branchNameInvalid, "<null>")); //$NON-NLS-1$
 
 		try {
 			String fullOldName;
 			String fullNewName;
 			if (repo.getRef(newName) != null)
 				throw new RefAlreadyExistsException(MessageFormat.format(
-						JGitText.get().refAlreadExists, newName));
+						JGitText.get().refAlreadyExists1, newName));
 			if (oldName != null) {
 				Ref ref = repo.getRef(oldName);
 				if (ref == null)
@@ -138,41 +140,46 @@ public class RenameBranchCommand extends GitCommand<Ref> {
 
 			setCallable(false);
 
-			boolean ok = Result.RENAMED == renameResult;
-
-			if (ok) {
-				if (fullNewName.startsWith(Constants.R_HEADS)) {
-					// move the upstream configuration over to the new branch
-					String shortOldName = fullOldName
-							.substring(Constants.R_HEADS.length());
-					final StoredConfig repoConfig = repo.getConfig();
-					String oldRemote = repoConfig.getString(
-							ConfigConstants.CONFIG_BRANCH_SECTION,
-							shortOldName, ConfigConstants.CONFIG_KEY_REMOTE);
-					if (oldRemote != null) {
-						repoConfig.setString(
-								ConfigConstants.CONFIG_BRANCH_SECTION, newName,
-								ConfigConstants.CONFIG_KEY_REMOTE, oldRemote);
-					}
-					String oldMerge = repoConfig.getString(
-							ConfigConstants.CONFIG_BRANCH_SECTION,
-							shortOldName, ConfigConstants.CONFIG_KEY_MERGE);
-					if (oldMerge != null) {
-						repoConfig.setString(
-								ConfigConstants.CONFIG_BRANCH_SECTION, newName,
-								ConfigConstants.CONFIG_KEY_MERGE, oldMerge);
-					}
-					repoConfig
-							.unsetSection(
-									ConfigConstants.CONFIG_BRANCH_SECTION,
-									shortOldName);
-					repoConfig.save();
-				}
-
-			} else
+			if (Result.RENAMED != renameResult)
 				throw new JGitInternalException(MessageFormat.format(JGitText
 						.get().renameBranchUnexpectedResult, renameResult
 						.name()));
+
+			if (fullNewName.startsWith(Constants.R_HEADS)) {
+				String shortOldName = fullOldName.substring(Constants.R_HEADS
+						.length());
+				final StoredConfig repoConfig = repo.getConfig();
+				// Copy all configuration values over to the new branch
+				for (String name : repoConfig.getNames(
+						ConfigConstants.CONFIG_BRANCH_SECTION, shortOldName)) {
+					String[] values = repoConfig.getStringList(
+							ConfigConstants.CONFIG_BRANCH_SECTION,
+							shortOldName, name);
+					if (values.length == 0)
+						continue;
+					// Keep any existing values already configured for the
+					// new branch name
+					String[] existing = repoConfig.getStringList(
+							ConfigConstants.CONFIG_BRANCH_SECTION, newName,
+							name);
+					if (existing.length > 0) {
+						String[] newValues = new String[values.length
+								+ existing.length];
+						System.arraycopy(existing, 0, newValues, 0,
+								existing.length);
+						System.arraycopy(values, 0, newValues, existing.length,
+								values.length);
+						values = newValues;
+					}
+
+					repoConfig.setStringList(
+							ConfigConstants.CONFIG_BRANCH_SECTION, newName,
+							name, Arrays.asList(values));
+				}
+				repoConfig.unsetSection(ConfigConstants.CONFIG_BRANCH_SECTION,
+						shortOldName);
+				repoConfig.save();
+			}
 
 			Ref resultRef = repo.getRef(newName);
 			if (resultRef == null)

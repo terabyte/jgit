@@ -51,7 +51,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
-import org.eclipse.jgit.JGitText;
+import org.eclipse.jgit.internal.JGitText;
 import org.eclipse.jgit.lib.Constants;
 
 /**
@@ -146,18 +146,21 @@ public class DirCacheEditor extends BaseDirCacheEditor {
 				continue;
 			}
 
-			final DirCacheEntry ent;
 			if (missing) {
-				ent = new DirCacheEntry(e.path);
+				final DirCacheEntry ent = new DirCacheEntry(e.path);
 				e.apply(ent);
 				if (ent.getRawMode() == 0)
 					throw new IllegalArgumentException(MessageFormat.format(JGitText.get().fileModeNotSetForPath
 							, ent.getPathString()));
+				fastAdd(ent);
 			} else {
-				ent = cache.getEntry(eIdx);
-				e.apply(ent);
+				// Apply to all entries of the current path (different stages)
+				for (int i = eIdx; i < lastIdx; i++) {
+					final DirCacheEntry ent = cache.getEntry(i);
+					e.apply(ent);
+					fastAdd(ent);
+				}
 			}
-			fastAdd(ent);
 		}
 
 		final int cnt = maxIdx - lastIdx;
@@ -267,9 +270,12 @@ public class DirCacheEditor extends BaseDirCacheEditor {
 		 *            path of the subtree within the repository. If the path
 		 *            does not end with "/" a "/" is implicitly added to ensure
 		 *            only the subtree's contents are matched by the command.
+		 *            The special case "" (not "/"!) deletes all entries.
 		 */
 		public DeleteTree(final String entryPath) {
-			super(entryPath.endsWith("/") ? entryPath : entryPath + "/");
+			super(
+					(entryPath.endsWith("/") || entryPath.length() == 0) ? entryPath
+							: entryPath + "/");
 		}
 
 		public void apply(final DirCacheEntry ent) {

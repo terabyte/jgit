@@ -43,10 +43,16 @@
 package org.eclipse.jgit.treewalk.filter;
 
 import java.io.IOException;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Set;
 
+import org.eclipse.jgit.dircache.DirCacheEntry;
 import org.eclipse.jgit.dircache.DirCacheIterator;
 import org.eclipse.jgit.errors.IncorrectObjectTypeException;
 import org.eclipse.jgit.errors.MissingObjectException;
+import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.treewalk.TreeWalk;
 import org.eclipse.jgit.treewalk.WorkingTreeIterator;
 
@@ -78,6 +84,12 @@ public class IndexDiffFilter extends TreeFilter {
 	private final int workingTree;
 
 	private final boolean honorIgnores;
+
+	private final Set<String> ignoredPaths = new HashSet<String>();
+
+	private final LinkedList<String> untrackedParentFolders = new LinkedList<String>();
+
+	private final LinkedList<String> untrackedFolders = new LinkedList<String>();
 
 	/**
 	 * Creates a new instance of this filter. Do not use an instance of this
@@ -118,24 +130,64 @@ public class IndexDiffFilter extends TreeFilter {
 	@Override
 	public boolean include(TreeWalk tw) throws MissingObjectException,
 			IncorrectObjectTypeException, IOException {
+		final int cnt = tw.getTreeCount();
+		final int wm = tw.getRawMode(workingTree);
+		String path = tw.getPathString();
+
+		DirCacheIterator di = tw.getTree(dirCache, DirCacheIterator.class);
+		if (di != null) {
+			DirCacheEntry dce = di.getDirCacheEntry();
+			if (dce != null)
+				if (dce.isAssumeValid())
+					return false;
+		}
+
+		if (!tw.isPostOrderTraversal()) {
+			// detect untracked Folders
+			// Whenever we enter a folder in the workingtree assume it will
+			// contain only untracked files and add it to
+			// untrackedParentFolders. If we later find tracked files we will
+			// remove it from this list
+			if (FileMode.TREE.equals(wm)) {
+				// Clean untrackedParentFolders. This potentially moves entries
+				// from untrackedParentFolders to untrackedFolders
+				copyUntrackedFolders(path);
+				// add the folder we just entered to untrackedParentFolders
+				untrackedParentFolders.addFirst(path);
+			}
+
+			// detect untracked Folders
+			// Whenever we see a tracked file we know that all of its parent
+			// folders do not belong into untrackedParentFolders anymore. Clean
+			// it.
+			for (int i = 0; i < cnt; i++) {
+				int rmode = tw.getRawMode(i);
+				if (i != workingTree && rmode != FileMode.TYPE_MISSING
+						&& FileMode.TREE.equals(rmode)) {
+					untrackedParentFolders.clear();
+					break;
+				}
+			}
+		}
+
 		// If the working tree file doesn't exist, it does exist for at least
 		// one other so include this difference.
-		final int wm = tw.getRawMode(workingTree);
 		if (wm == 0)
 			return true;
 
 		// If the path does not appear in the DirCache and its ignored
 		// we can avoid returning a result here, but only if its not in any
 		// other tree.
-		final int cnt = tw.getTreeCount();
 		final int dm = tw.getRawMode(dirCache);
-		if (dm == 0) {
-			if (honorIgnores && workingTree(tw).isEntryIgnored()) {
+		WorkingTreeIterator wi = workingTree(tw);
+		if (dm == FileMode.TYPE_MISSING) {
+			if (honorIgnores && wi.isEntryIgnored()) {
+				ignoredPaths.add(wi.getEntryPathString());
 				int i = 0;
 				for (; i < cnt; i++) {
 					if (i == dirCache || i == workingTree)
 						continue;
-					if (tw.getRawMode(i) != 0)
+					if (tw.getRawMode(i) != FileMode.TYPE_MISSING)
 						break;
 				}
 
@@ -166,9 +218,30 @@ public class IndexDiffFilter extends TreeFilter {
 		// Only one chance left to detect a diff: between index and working
 		// tree. Make use of the WorkingTreeIterator#isModified() method to
 		// avoid computing SHA1 on filesystem content if not really needed.
-		WorkingTreeIterator wi = workingTree(tw);
-		DirCacheIterator di = tw.getTree(dirCache, DirCacheIterator.class);
 		return wi.isModified(di.getDirCacheEntry(), true);
+	}
+
+	/**
+	 * Copy all entries which are still in untrackedParentFolders and which
+	 * belong to a path this treewalk has left into untrackedFolders. It is sure
+	 * that we will not find any tracked files underneath these paths. Therefore
+	 * these paths definitely belong to untracked folders.
+	 *
+	 * @param currentPath
+	 *            the current path of the treewalk
+	 */
+	private void copyUntrackedFolders(String currentPath) {
+		String pathToBeSaved = null;
+		while (!untrackedParentFolders.isEmpty()
+				&& !currentPath.startsWith(untrackedParentFolders.getFirst()
+						+ "/")) //$NON-NLS-1$
+			pathToBeSaved = untrackedParentFolders.removeFirst();
+		if (pathToBeSaved != null) {
+			while (!untrackedFolders.isEmpty()
+					&& untrackedFolders.getLast().startsWith(pathToBeSaved))
+				untrackedFolders.removeLast();
+			untrackedFolders.addLast(pathToBeSaved);
+		}
 	}
 
 	private WorkingTreeIterator workingTree(TreeWalk tw) {
@@ -189,6 +262,36 @@ public class IndexDiffFilter extends TreeFilter {
 
 	@Override
 	public String toString() {
-		return "INDEX_DIFF_FILTER";
+		return "INDEX_DIFF_FILTER"; //$NON-NLS-1$
+	}
+
+	/**
+	 * The method returns the list of ignored files and folders. Only the root
+	 * folder of an ignored folder hierarchy is reported. If a/b/c is listed in
+	 * the .gitignore then you should not expect a/b/c/d/e/f to be reported
+	 * here. Only a/b/c will be reported. Furthermore only ignored files /
+	 * folders are returned that are NOT in the index.
+	 *
+	 * @return ignored paths
+	 */
+	public Set<String> getIgnoredPaths() {
+		return ignoredPaths;
+	}
+
+	/**
+	 * @return all paths of folders which contain only untracked files/folders.
+	 *         If on the associated treewalk postorder traversal was turned on
+	 *         (see {@link TreeWalk#setPostOrderTraversal(boolean)}) then an
+	 *         empty list will be returned.
+	 */
+	public List<String> getUntrackedFolders() {
+		LinkedList<String> ret = new LinkedList<String>(untrackedFolders);
+		if (!untrackedParentFolders.isEmpty()) {
+			String toBeAdded = untrackedParentFolders.getLast();
+			while (!ret.isEmpty() && ret.getLast().startsWith(toBeAdded))
+				ret.removeLast();
+			ret.addLast(toBeAdded);
+		}
+		return ret;
 	}
 }

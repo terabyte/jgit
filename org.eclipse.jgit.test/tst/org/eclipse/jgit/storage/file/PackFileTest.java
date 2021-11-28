@@ -43,6 +43,7 @@
 
 package org.eclipse.jgit.storage.file;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -57,8 +58,8 @@ import java.text.MessageFormat;
 import java.util.Arrays;
 import java.util.zip.Deflater;
 
-import org.eclipse.jgit.JGitText;
 import org.eclipse.jgit.errors.LargeObjectException;
+import org.eclipse.jgit.internal.JGitText;
 import org.eclipse.jgit.junit.JGitTestUtil;
 import org.eclipse.jgit.junit.LocalDiskRepositoryTestCase;
 import org.eclipse.jgit.junit.TestRepository;
@@ -224,7 +225,7 @@ public class PackFileTest extends LocalDiskRepositoryTestCase {
 		assertEquals(data3.length, ol.getSize());
 		assertFalse("is large", ol.isLarge());
 		assertNotNull(ol.getCachedBytes());
-		assertTrue(Arrays.equals(data3, ol.getCachedBytes()));
+		assertArrayEquals(data3, ol.getCachedBytes());
 
 		ObjectStream in = ol.openStream();
 		assertNotNull("have stream", in);
@@ -302,14 +303,14 @@ public class PackFileTest extends LocalDiskRepositoryTestCase {
 		in.close();
 	}
 
-	private byte[] clone(int first, byte[] base) {
+	private static byte[] clone(int first, byte[] base) {
 		byte[] r = new byte[base.length];
 		System.arraycopy(base, 1, r, 1, r.length - 1);
 		r[0] = (byte) first;
 		return r;
 	}
 
-	private byte[] delta(byte[] base, byte[] dest) throws IOException {
+	private static byte[] delta(byte[] base, byte[] dest) throws IOException {
 		ByteArrayOutputStream tmp = new ByteArrayOutputStream();
 		DeltaEncoder de = new DeltaEncoder(tmp, base.length, dest.length);
 		de.insert(dest, 0, 1);
@@ -317,7 +318,7 @@ public class PackFileTest extends LocalDiskRepositoryTestCase {
 		return tmp.toByteArray();
 	}
 
-	private void packHeader(TemporaryBuffer.Heap pack, int cnt)
+	private static void packHeader(TemporaryBuffer.Heap pack, int cnt)
 			throws IOException {
 		final byte[] hdr = new byte[8];
 		NB.encodeInt32(hdr, 0, 2);
@@ -326,7 +327,7 @@ public class PackFileTest extends LocalDiskRepositoryTestCase {
 		pack.write(hdr, 0, 8);
 	}
 
-	private void objectHeader(TemporaryBuffer.Heap pack, int type, int sz)
+	private static void objectHeader(TemporaryBuffer.Heap pack, int type, int sz)
 			throws IOException {
 		byte[] buf = new byte[8];
 		int nextLength = sz >>> 4;
@@ -341,7 +342,7 @@ public class PackFileTest extends LocalDiskRepositoryTestCase {
 		pack.write(buf, 0, n);
 	}
 
-	private void deflate(TemporaryBuffer.Heap pack, final byte[] content)
+	private static void deflate(TemporaryBuffer.Heap pack, final byte[] content)
 			throws IOException {
 		final Deflater deflater = new Deflater();
 		final byte[] buf = new byte[128];
@@ -355,7 +356,7 @@ public class PackFileTest extends LocalDiskRepositoryTestCase {
 		deflater.end();
 	}
 
-	private void digest(TemporaryBuffer.Heap buf) throws IOException {
+	private static void digest(TemporaryBuffer.Heap buf) throws IOException {
 		MessageDigest md = Constants.newMessageDigest();
 		md.update(buf.toByteArray());
 		buf.write(md.digest());

@@ -43,6 +43,7 @@
 
 package org.eclipse.jgit.storage.pack;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -54,8 +55,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Arrays;
 
-import org.eclipse.jgit.JGitText;
 import org.eclipse.jgit.errors.CorruptObjectException;
+import org.eclipse.jgit.internal.JGitText;
 import org.eclipse.jgit.junit.JGitTestUtil;
 import org.eclipse.jgit.junit.TestRng;
 import org.eclipse.jgit.lib.Constants;
@@ -267,7 +268,7 @@ public class DeltaStreamTest {
 		delta = deltaBuf.toByteArray();
 		assertEquals(base.length, BinaryDelta.getBaseSize(delta));
 		assertEquals(data.length, BinaryDelta.getResultSize(delta));
-		assertTrue(Arrays.equals(data, BinaryDelta.apply(base, delta)));
+		assertArrayEquals(data, BinaryDelta.apply(base, delta));
 
 		// Assert that a single bulk read produces the correct result.
 		//

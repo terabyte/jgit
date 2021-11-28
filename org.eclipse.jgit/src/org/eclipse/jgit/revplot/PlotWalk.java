@@ -51,13 +51,15 @@ import static org.eclipse.jgit.lib.Constants.R_TAGS;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-import org.eclipse.jgit.JGitText;
 import org.eclipse.jgit.errors.IncorrectObjectTypeException;
 import org.eclipse.jgit.errors.MissingObjectException;
+import org.eclipse.jgit.internal.JGitText;
 import org.eclipse.jgit.lib.AnyObjectId;
 import org.eclipse.jgit.lib.PersonIdent;
 import org.eclipse.jgit.lib.Ref;
@@ -89,6 +91,27 @@ public class PlotWalk extends RevWalk {
 		super(repo);
 		super.sort(RevSort.TOPO, true);
 		reverseRefMap = repo.getAllRefsByPeeledObjectId();
+	}
+
+	/**
+	 * Add additional refs to the walk
+	 *
+	 * @param refs
+	 *            additional refs
+	 *
+	 * @throws IOException
+	 */
+	public void addAdditionalRefs(Iterable<Ref> refs) throws IOException {
+		for (Ref ref : refs) {
+			Set<Ref> set = reverseRefMap.get(ref.getObjectId());
+			if (set == null)
+				set = Collections.singleton(ref);
+			else {
+				set = new HashSet<Ref>(set);
+				set.add(ref);
+			}
+			reverseRefMap.put(ref.getObjectId(), set);
+		}
 	}
 
 	@Override
@@ -149,6 +172,11 @@ public class PlotWalk extends RevWalk {
 				return ((RevCommit) o).getCommitTime();
 			if (o instanceof RevTag) {
 				RevTag tag = (RevTag) o;
+				try {
+					parseBody(tag);
+				} catch (IOException e) {
+					return 0;
+				}
 				PersonIdent who = tag.getTaggerIdent();
 				return who != null ? who.getWhen().getTime() : 0;
 			}

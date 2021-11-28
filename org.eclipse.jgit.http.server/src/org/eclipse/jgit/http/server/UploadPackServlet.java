@@ -43,14 +43,22 @@
 
 package org.eclipse.jgit.http.server;
 
+import static javax.servlet.http.HttpServletResponse.SC_BAD_REQUEST;
 import static javax.servlet.http.HttpServletResponse.SC_FORBIDDEN;
 import static javax.servlet.http.HttpServletResponse.SC_INTERNAL_SERVER_ERROR;
-import static javax.servlet.http.HttpServletResponse.SC_SERVICE_UNAVAILABLE;
 import static javax.servlet.http.HttpServletResponse.SC_UNAUTHORIZED;
 import static javax.servlet.http.HttpServletResponse.SC_UNSUPPORTED_MEDIA_TYPE;
+import static org.eclipse.jgit.http.server.ClientVersionUtil.hasChunkedEncodingRequestBug;
+import static org.eclipse.jgit.http.server.ClientVersionUtil.parseVersion;
+import static org.eclipse.jgit.http.server.GitSmartHttpTools.UPLOAD_PACK;
+import static org.eclipse.jgit.http.server.GitSmartHttpTools.UPLOAD_PACK_REQUEST_TYPE;
+import static org.eclipse.jgit.http.server.GitSmartHttpTools.UPLOAD_PACK_RESULT_TYPE;
+import static org.eclipse.jgit.http.server.GitSmartHttpTools.sendError;
 import static org.eclipse.jgit.http.server.ServletUtils.ATTRIBUTE_HANDLER;
+import static org.eclipse.jgit.http.server.ServletUtils.consumeRequestBody;
 import static org.eclipse.jgit.http.server.ServletUtils.getInputStream;
 import static org.eclipse.jgit.http.server.ServletUtils.getRepository;
+import static org.eclipse.jgit.util.HttpSupport.HDR_USER_AGENT;
 
 import java.io.IOException;
 import java.util.List;
@@ -68,17 +76,14 @@ import javax.servlet.http.HttpServletResponse;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.transport.RefAdvertiser.PacketLineOutRefAdvertiser;
 import org.eclipse.jgit.transport.UploadPack;
-import org.eclipse.jgit.transport.UploadPackMayNotContinueException;
+import org.eclipse.jgit.transport.UploadPackInternalServerErrorException;
+import org.eclipse.jgit.transport.ServiceMayNotContinueException;
 import org.eclipse.jgit.transport.resolver.ServiceNotAuthorizedException;
 import org.eclipse.jgit.transport.resolver.ServiceNotEnabledException;
 import org.eclipse.jgit.transport.resolver.UploadPackFactory;
 
 /** Server side implementation of smart fetch over HTTP. */
 class UploadPackServlet extends HttpServlet {
-	private static final String REQ_TYPE = "application/x-git-upload-pack-request";
-
-	static final String RSP_TYPE = "application/x-git-upload-pack-result";
-
 	private static final long serialVersionUID = 1L;
 
 	static class InfoRefs extends SmartServiceInfoRefs {
@@ -86,7 +91,7 @@ class UploadPackServlet extends HttpServlet {
 
 		InfoRefs(UploadPackFactory<HttpServletRequest> uploadPackFactory,
 				List<Filter> filters) {
-			super("git-upload-pack", filters);
+			super(UPLOAD_PACK, filters);
 			this.uploadPackFactory = uploadPackFactory;
 		}
 
@@ -131,7 +136,7 @@ class UploadPackServlet extends HttpServlet {
 				return;
 
 			} catch (ServiceNotEnabledException e) {
-				RepositoryFilter.sendError(SC_FORBIDDEN, req, rsp);
+				sendError(req, rsp, SC_FORBIDDEN);
 				return;
 			}
 
@@ -155,34 +160,57 @@ class UploadPackServlet extends HttpServlet {
 	@Override
 	public void doPost(final HttpServletRequest req,
 			final HttpServletResponse rsp) throws IOException {
-		if (!REQ_TYPE.equals(req.getContentType())) {
+		if (!UPLOAD_PACK_REQUEST_TYPE.equals(req.getContentType())) {
 			rsp.sendError(SC_UNSUPPORTED_MEDIA_TYPE);
 			return;
 		}
 
+		int[] version = parseVersion(req.getHeader(HDR_USER_AGENT));
+		if (hasChunkedEncodingRequestBug(version, req)) {
+			GitSmartHttpTools.sendError(req, rsp, SC_BAD_REQUEST, "\n\n"
+					+ HttpServerText.get().clientHas175ChunkedEncodingBug);
+			return;
+		}
+
+		SmartOutputStream out = new SmartOutputStream(req, rsp, false) {
+			@Override
+			public void flush() throws IOException {
+				doFlush();
+			}
+		};
+
 		UploadPack up = (UploadPack) req.getAttribute(ATTRIBUTE_HANDLER);
 		try {
 			up.setBiDirectionalPipe(false);
-			rsp.setContentType(RSP_TYPE);
+			rsp.setContentType(UPLOAD_PACK_RESULT_TYPE);
 
-			final SmartOutputStream out = new SmartOutputStream(req, rsp) {
-				@Override
-				public void flush() throws IOException {
-					doFlush();
-				}
-			};
 			up.upload(getInputStream(req), out, null);
 			out.close();
 
-		} catch (UploadPackMayNotContinueException e) {
-			if (!e.isOutput())
-				rsp.sendError(SC_SERVICE_UNAVAILABLE);
+		} catch (ServiceMayNotContinueException e) {
+			if (e.isOutput()) {
+				consumeRequestBody(req);
+				out.close();
+			} else if (!rsp.isCommitted()) {
+				rsp.reset();
+				sendError(req, rsp, SC_FORBIDDEN, e.getMessage());
+			}
 			return;
 
-		} catch (IOException e) {
+		} catch (UploadPackInternalServerErrorException e) {
+			// Special case exception, error message was sent to client.
+			getServletContext().log(
+					HttpServerText.get().internalErrorDuringUploadPack,
+					e.getCause());
+			consumeRequestBody(req);
+			out.close();
+
+		} catch (Throwable e) {
 			getServletContext().log(HttpServerText.get().internalErrorDuringUploadPack, e);
-			rsp.reset();
-			rsp.sendError(SC_INTERNAL_SERVER_ERROR);
+			if (!rsp.isCommitted()) {
+				rsp.reset();
+				sendError(req, rsp, SC_INTERNAL_SERVER_ERROR);
+			}
 			return;
 		}
 	}

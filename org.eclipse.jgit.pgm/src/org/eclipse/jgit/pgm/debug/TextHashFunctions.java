@@ -43,6 +43,9 @@
 
 package org.eclipse.jgit.pgm.debug;
 
+import static java.lang.Integer.valueOf;
+import static java.lang.Long.valueOf;
+
 import java.io.File;
 import java.lang.reflect.Field;
 import java.security.MessageDigest;
@@ -342,31 +345,32 @@ class TextHashFunctions extends TextBuiltin {
 		if (db.getDirectory() != null) {
 			String name = db.getDirectory().getName();
 			File parent = db.getDirectory().getParentFile();
-			if (name.equals(Constants.DOT_GIT_EXT) && parent != null)
+			if (name.equals(Constants.DOT_GIT) && parent != null)
 				name = parent.getName();
-			out.println(name + ":");
+			outw.println(name + ":"); //$NON-NLS-1$
 		}
-		out.format("  %6d files; %5d avg. unique lines/file\n", //
-				fileCnt, //
-				lineCnt / fileCnt);
-		out.format("%-20s %-15s %9s\n", "Hash", "Fold", "Max Len");
-		out.println("-----------------------------------------------");
+		outw.format("  %6d files; %5d avg. unique lines/file\n", //
+				valueOf(fileCnt), //
+				valueOf(lineCnt / fileCnt));
+		outw.format("%-20s %-15s %9s\n", "Hash", "Fold", "Max Len");
+		outw.println("-----------------------------------------------"); //$NON-NLS-1$
 		String lastHashName = null;
 		for (Function fun : all) {
 			String hashName = fun.hash.name;
 			if (hashName.equals(lastHashName))
-				hashName = "";
-			out.format("%-20s %-15s %9d\n", //
+				hashName = ""; //$NON-NLS-1$
+			outw.format("%-20s %-15s %9d\n", // //$NON-NLS-1$
 					hashName, //
 					fun.fold.name, //
-					fun.maxChainLength);
+					valueOf(fun.maxChainLength));
 			lastHashName = fun.hash.name;
 		}
-		out.println();
-		out.flush();
+		outw.println();
+		outw.flush();
 	}
 
-	private void testOne(Function fun, RawText txt, int[] elements, int cnt) {
+	private static void testOne(Function fun, RawText txt, int[] elements,
+			int cnt) {
 		final Hash cmp = fun.hash;
 		final Fold fold = fun.fold;
 

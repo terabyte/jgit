@@ -46,7 +46,7 @@ package org.eclipse.jgit.errors;
 
 import java.util.Map;
 
-import org.eclipse.jgit.JGitText;
+import org.eclipse.jgit.internal.JGitText;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.transport.URIish;
 
@@ -60,10 +60,10 @@ public class MissingBundlePrerequisiteException extends TransportException {
 		final StringBuilder r = new StringBuilder();
 		r.append(JGitText.get().missingPrerequisiteCommits);
 		for (final Map.Entry<ObjectId, String> e : missingCommits.entrySet()) {
-			r.append("\n  ");
+			r.append("\n  "); //$NON-NLS-1$
 			r.append(e.getKey().name());
 			if (e.getValue() != null)
-				r.append(" ").append(e.getValue());
+				r.append(" ").append(e.getValue()); //$NON-NLS-1$
 		}
 		return r.toString();
 	}

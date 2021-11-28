@@ -10,7 +10,7 @@ import java.io.UnsupportedEncodingException;
 import java.text.MessageFormat;
 import java.util.Arrays;
 
-import org.eclipse.jgit.JGitText;
+import org.eclipse.jgit.internal.JGitText;
 
 /**
  * Encodes and decodes to and from Base64 notation.
@@ -40,7 +40,7 @@ public class Base64 {
 	private final static byte INVALID_DEC = -3;
 
 	/** Preferred encoding. */
-	private final static String UTF_8 = "UTF-8";
+	private final static String UTF_8 = "UTF-8"; //$NON-NLS-1$
 
 	/** The 64 valid Base64 values. */
 	private final static byte[] ENC;
@@ -54,10 +54,10 @@ public class Base64 {
 
 	static {
 		try {
-			ENC = ("ABCDEFGHIJKLMNOPQRSTUVWXYZ" //
-					+ "abcdefghijklmnopqrstuvwxyz" //
-					+ "0123456789" //
-					+ "+/" //
+			ENC = ("ABCDEFGHIJKLMNOPQRSTUVWXYZ" // //$NON-NLS-1$
+					+ "abcdefghijklmnopqrstuvwxyz" // //$NON-NLS-1$
+					+ "0123456789" // //$NON-NLS-1$
+					+ "+/" // //$NON-NLS-1$
 			).getBytes(UTF_8);
 		} catch (UnsupportedEncodingException uee) {
 			throw new RuntimeException(uee.getMessage(), uee);
@@ -284,8 +284,8 @@ public class Base64 {
 
 			} else if (sbiDecode != WHITE_SPACE_DEC)
 				throw new IllegalArgumentException(MessageFormat.format(
-						JGitText.get().badBase64InputCharacterAt, i,
-						source[i] & 0xff));
+						JGitText.get().badBase64InputCharacterAt,
+						Integer.valueOf(i), Integer.valueOf(source[i] & 0xff)));
 		}
 
 		if (outBuff.length == outBuffPosn)

@@ -48,7 +48,7 @@ import java.io.InputStream;
 import java.util.Collection;
 import java.util.LinkedList;
 
-import org.eclipse.jgit.JGitText;
+import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.api.errors.JGitInternalException;
 import org.eclipse.jgit.api.errors.NoFilepatternException;
 import org.eclipse.jgit.dircache.DirCache;
@@ -56,7 +56,9 @@ import org.eclipse.jgit.dircache.DirCacheBuildIterator;
 import org.eclipse.jgit.dircache.DirCacheBuilder;
 import org.eclipse.jgit.dircache.DirCacheEntry;
 import org.eclipse.jgit.dircache.DirCacheIterator;
+import org.eclipse.jgit.internal.JGitText;
 import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.ObjectInserter;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.treewalk.FileTreeIterator;
@@ -121,14 +123,14 @@ public class AddCommand extends GitCommand<DirCache> {
 	 *
 	 * @return the DirCache after Add
 	 */
-	public DirCache call() throws NoFilepatternException {
+	public DirCache call() throws GitAPIException, NoFilepatternException {
 
 		if (filepatterns.isEmpty())
 			throw new NoFilepatternException(JGitText.get().atLeastOnePatternIsRequired);
 		checkCallable();
 		DirCache dc = null;
 		boolean addAll = false;
-		if (filepatterns.contains("."))
+		if (filepatterns.contains(".")) //$NON-NLS-1$
 			addAll = true;
 
 		ObjectInserter inserter = repo.newObjectInserter();
@@ -168,27 +170,34 @@ public class AddCommand extends GitCommand<DirCache> {
 							DirCacheEntry entry = new DirCacheEntry(path);
 							if (c == null || c.getDirCacheEntry() == null
 									|| !c.getDirCacheEntry().isAssumeValid()) {
-								entry.setLength(sz);
-								entry.setLastModified(f.getEntryLastModified());
-								entry.setFileMode(f.getEntryFileMode());
+								FileMode mode = f.getIndexFileMode(c);
+								entry.setFileMode(mode);
 
-								InputStream in = f.openEntryStream();
-								try {
-									entry.setObjectId(inserter.insert(
-											Constants.OBJ_BLOB, sz, in));
-								} finally {
-									in.close();
-								}
-
+								if (FileMode.GITLINK != mode) {
+									entry.setLength(sz);
+									entry.setLastModified(f
+											.getEntryLastModified());
+									long contentSize = f
+											.getEntryContentLength();
+									InputStream in = f.openEntryStream();
+									try {
+										entry.setObjectId(inserter.insert(
+												Constants.OBJ_BLOB, contentSize, in));
+									} finally {
+										in.close();
+									}
+								} else
+									entry.setObjectId(f.getEntryObjectId());
 								builder.add(entry);
 								lastAddedFile = path;
 							} else {
 								builder.add(c.getDirCacheEntry());
 							}
 
-						} else if (!update){
+						} else if (c != null
+								&& (!update || FileMode.GITLINK == c
+										.getEntryFileMode()))
 							builder.add(c.getDirCacheEntry());
-						}
 					}
 				}
 			}

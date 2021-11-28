@@ -70,22 +70,29 @@ class SmartOutputStream extends TemporaryBuffer {
 	private static final int LIMIT = 32 * 1024;
 
 	private final HttpServletRequest req;
-
 	private final HttpServletResponse rsp;
-
+	private boolean compressStream;
 	private boolean startedOutput;
 
 	SmartOutputStream(final HttpServletRequest req,
-			final HttpServletResponse rsp) {
+			final HttpServletResponse rsp,
+			boolean compressStream) {
 		super(LIMIT);
 		this.req = req;
 		this.rsp = rsp;
+		this.compressStream = compressStream;
 	}
 
 	@Override
 	protected OutputStream overflow() throws IOException {
 		startedOutput = true;
-		return rsp.getOutputStream();
+
+		OutputStream out = rsp.getOutputStream();
+		if (compressStream && acceptsGzipEncoding(req)) {
+			rsp.setHeader(HDR_CONTENT_ENCODING, ENCODING_GZIP);
+			out = new GZIPOutputStream(out);
+		}
+		return out;
 	}
 
 	public void close() throws IOException {
@@ -101,8 +108,11 @@ class SmartOutputStream extends TemporaryBuffer {
 				TemporaryBuffer gzbuf = new TemporaryBuffer.Heap(LIMIT);
 				try {
 					GZIPOutputStream gzip = new GZIPOutputStream(gzbuf);
-					out.writeTo(gzip, null);
-					gzip.close();
+					try {
+						out.writeTo(gzip, null);
+					} finally {
+						gzip.close();
+					}
 					if (gzbuf.length() < out.length()) {
 						out = gzbuf;
 						rsp.setHeader(HDR_CONTENT_ENCODING, ENCODING_GZIP);

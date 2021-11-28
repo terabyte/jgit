@@ -45,6 +45,8 @@
 
 package org.eclipse.jgit.storage.file;
 
+import static org.eclipse.jgit.storage.pack.PackExt.INDEX;
+
 import java.io.EOFException;
 import java.io.File;
 import java.io.IOException;
@@ -61,12 +63,12 @@ import java.util.zip.CRC32;
 import java.util.zip.DataFormatException;
 import java.util.zip.Inflater;
 
-import org.eclipse.jgit.JGitText;
 import org.eclipse.jgit.errors.CorruptObjectException;
 import org.eclipse.jgit.errors.MissingObjectException;
 import org.eclipse.jgit.errors.PackInvalidException;
 import org.eclipse.jgit.errors.PackMismatchException;
 import org.eclipse.jgit.errors.StoredObjectRepresentationNotAvailableException;
+import org.eclipse.jgit.internal.JGitText;
 import org.eclipse.jgit.lib.AbbreviatedObjectId;
 import org.eclipse.jgit.lib.AnyObjectId;
 import org.eclipse.jgit.lib.Constants;
@@ -74,6 +76,7 @@ import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectLoader;
 import org.eclipse.jgit.storage.pack.BinaryDelta;
 import org.eclipse.jgit.storage.pack.ObjectToPack;
+import org.eclipse.jgit.storage.pack.PackExt;
 import org.eclipse.jgit.storage.pack.PackOutputStream;
 import org.eclipse.jgit.util.LongList;
 import org.eclipse.jgit.util.NB;
@@ -92,9 +95,9 @@ public class PackFile implements Iterable<PackIndex.MutableEntry> {
 		}
 	};
 
-	private final File idxFile;
-
 	private final File packFile;
+
+	private File keepFile;
 
 	private volatile String packName;
 
@@ -133,13 +136,10 @@ public class PackFile implements Iterable<PackIndex.MutableEntry> {
 	/**
 	 * Construct a reader for an existing, pre-indexed packfile.
 	 *
-	 * @param idxFile
-	 *            path of the <code>.idx</code> file listing the contents.
 	 * @param packFile
 	 *            path of the <code>.pack</code> file holding the data.
 	 */
-	public PackFile(final File idxFile, final File packFile) {
-		this.idxFile = idxFile;
+	public PackFile(final File packFile) {
 		this.packFile = packFile;
 		this.packLastModified = (int) (packFile.lastModified() >> 10);
 
@@ -156,7 +156,7 @@ public class PackFile implements Iterable<PackIndex.MutableEntry> {
 				throw new PackInvalidException(packFile);
 
 			try {
-				final PackIndex idx = PackIndex.open(idxFile);
+				final PackIndex idx = PackIndex.open(extFile(INDEX));
 
 				if (packChecksum == null)
 					packChecksum = idx.packChecksum;
@@ -177,15 +177,23 @@ public class PackFile implements Iterable<PackIndex.MutableEntry> {
 		return packFile;
 	}
 
+	/**
+	 * @return the index for this pack file.
+	 * @throws IOException
+	 */
+	public PackIndex getIndex() throws IOException {
+		return idx();
+	}
+
 	/** @return name extracted from {@code pack-*.pack} pattern. */
 	public String getPackName() {
 		String name = packName;
 		if (name == null) {
 			name = getPackFile().getName();
-			if (name.startsWith("pack-"))
-				name = name.substring("pack-".length());
-			if (name.endsWith(".pack"))
-				name = name.substring(0, name.length() - ".pack".length());
+			if (name.startsWith("pack-")) //$NON-NLS-1$
+				name = name.substring("pack-".length()); //$NON-NLS-1$
+			if (name.endsWith(".pack")) //$NON-NLS-1$
+				name = name.substring(0, name.length() - ".pack".length()); //$NON-NLS-1$
 			packName = name;
 		}
 		return name;
@@ -207,6 +215,17 @@ public class PackFile implements Iterable<PackIndex.MutableEntry> {
 	public boolean hasObject(final AnyObjectId id) throws IOException {
 		final long offset = idx().findOffset(id);
 		return 0 < offset && !isCorrupt(offset);
+	}
+
+	/**
+	 * Determines whether a .keep file exists for this pack file.
+	 *
+	 * @return true if a .keep file exist.
+	 */
+	public boolean shouldBeKept() {
+		if (keepFile == null)
+			keepFile = new File(packFile.getPath() + ".keep"); //$NON-NLS-1$
+		return keepFile.exists();
 	}
 
 	/**
@@ -306,7 +325,9 @@ public class PackFile implements Iterable<PackIndex.MutableEntry> {
 		}
 
 		if (curs.inflate(this, position, dstbuf, 0) != sz)
-			throw new EOFException(MessageFormat.format(JGitText.get().shortCompressedStreamAt, position));
+			throw new EOFException(MessageFormat.format(
+					JGitText.get().shortCompressedStreamAt,
+					Long.valueOf(position)));
 		return dstbuf;
 	}
 
@@ -345,7 +366,7 @@ public class PackFile implements Iterable<PackIndex.MutableEntry> {
 		int headerCnt = 1;
 		while ((c & 0x80) != 0) {
 			c = buf[headerCnt++] & 0xff;
-			inflatedLength += (c & 0x7f) << shift;
+			inflatedLength += ((long) (c & 0x7f)) << shift;
 			shift += 7;
 		}
 
@@ -406,7 +427,7 @@ public class PackFile implements Iterable<PackIndex.MutableEntry> {
 					setCorrupt(src.offset);
 					throw new CorruptObjectException(MessageFormat.format(
 							JGitText.get().objectAtHasBadZlibStream,
-							src.offset, getPackFile()));
+							Long.valueOf(src.offset), getPackFile()));
 				}
 			} else if (validate) {
 				// We don't have a CRC32 code in the index, so compute it
@@ -435,7 +456,7 @@ public class PackFile implements Iterable<PackIndex.MutableEntry> {
 					setCorrupt(src.offset);
 					throw new EOFException(MessageFormat.format(
 							JGitText.get().shortCompressedStreamAt,
-							src.offset));
+							Long.valueOf(src.offset)));
 				}
 				expectedCRC = crc1.getValue();
 			} else {
@@ -447,7 +468,7 @@ public class PackFile implements Iterable<PackIndex.MutableEntry> {
 			CorruptObjectException corruptObject = new CorruptObjectException(
 					MessageFormat.format(
 							JGitText.get().objectAtHasBadZlibStream,
-							src.offset, getPackFile()));
+							Long.valueOf(src.offset), getPackFile()));
 			corruptObject.initCause(dataFormat);
 
 			StoredObjectRepresentationNotAvailableException gone;
@@ -503,9 +524,9 @@ public class PackFile implements Iterable<PackIndex.MutableEntry> {
 				cnt -= n;
 			}
 			if (validate && crc2.getValue() != expectedCRC) {
-				throw new CorruptObjectException(MessageFormat.format(JGitText
-						.get().objectAtHasBadZlibStream, src.offset,
-						getPackFile()));
+				throw new CorruptObjectException(MessageFormat.format(
+						JGitText.get().objectAtHasBadZlibStream,
+						Long.valueOf(src.offset), getPackFile()));
 			}
 		}
 	}
@@ -566,7 +587,7 @@ public class PackFile implements Iterable<PackIndex.MutableEntry> {
 			if (invalid)
 				throw new PackInvalidException(packFile);
 			synchronized (readLock) {
-				fd = new RandomAccessFile(packFile, "r");
+				fd = new RandomAccessFile(packFile, "r"); //$NON-NLS-1$
 				length = fd.length();
 				onOpenPack();
 			}
@@ -650,11 +671,14 @@ public class PackFile implements Iterable<PackIndex.MutableEntry> {
 		final long vers = NB.decodeUInt32(buf, 4);
 		final long packCnt = NB.decodeUInt32(buf, 8);
 		if (vers != 2 && vers != 3)
-			throw new IOException(MessageFormat.format(JGitText.get().unsupportedPackVersion, vers));
+			throw new IOException(MessageFormat.format(
+					JGitText.get().unsupportedPackVersion, Long.valueOf(vers)));
 
 		if (packCnt != idx.getObjectCount())
 			throw new PackMismatchException(MessageFormat.format(
-					JGitText.get().packObjectCountMismatch, packCnt, idx.getObjectCount(), getPackFile()));
+					JGitText.get().packObjectCountMismatch,
+					Long.valueOf(packCnt), Long.valueOf(idx.getObjectCount()),
+					getPackFile()));
 
 		fd.seek(length - 20);
 		fd.readFully(buf, 0, 20);
@@ -684,7 +708,7 @@ public class PackFile implements Iterable<PackIndex.MutableEntry> {
 				int p = 1;
 				while ((c & 0x80) != 0) {
 					c = ib[p++] & 0xff;
-					sz += (c & 0x7f) << shift;
+					sz += ((long) (c & 0x7f)) << shift;
 					shift += 7;
 				}
 
@@ -753,7 +777,8 @@ public class PackFile implements Iterable<PackIndex.MutableEntry> {
 
 				default:
 					throw new IOException(MessageFormat.format(
-							JGitText.get().unknownObjectType, typeCode));
+							JGitText.get().unknownObjectType,
+							Integer.valueOf(typeCode)));
 				}
 			}
 
@@ -801,8 +826,8 @@ public class PackFile implements Iterable<PackIndex.MutableEntry> {
 		} catch (DataFormatException dfe) {
 			CorruptObjectException coe = new CorruptObjectException(
 					MessageFormat.format(
-							JGitText.get().objectAtHasBadZlibStream, pos,
-							getPackFile()));
+							JGitText.get().objectAtHasBadZlibStream,
+							Long.valueOf(pos), getPackFile()));
 			coe.initCause(dfe);
 			throw coe;
 		}
@@ -906,8 +931,9 @@ public class PackFile implements Iterable<PackIndex.MutableEntry> {
 			}
 
 			default:
-				throw new IOException(MessageFormat.format(
-						JGitText.get().unknownObjectType, type));
+				throw new IOException(
+						MessageFormat.format(JGitText.get().unknownObjectType,
+								Integer.valueOf(type)));
 			}
 		}
 	}
@@ -929,7 +955,7 @@ public class PackFile implements Iterable<PackIndex.MutableEntry> {
 		int p = 1;
 		while ((c & 0x80) != 0) {
 			c = ib[p++] & 0xff;
-			sz += (c & 0x7f) << shift;
+			sz += ((long) (c & 0x7f)) << shift;
 			shift += 7;
 		}
 
@@ -954,14 +980,15 @@ public class PackFile implements Iterable<PackIndex.MutableEntry> {
 
 		default:
 			throw new IOException(MessageFormat.format(
-					JGitText.get().unknownObjectType, type));
+					JGitText.get().unknownObjectType, Integer.valueOf(type)));
 		}
 
 		try {
 			return BinaryDelta.getResultSize(getDeltaHeader(curs, deltaAt));
 		} catch (DataFormatException e) {
-			throw new CorruptObjectException(MessageFormat.format(JGitText
-					.get().objectAtHasBadZlibStream, pos, getPackFile()));
+			throw new CorruptObjectException(MessageFormat.format(
+					JGitText.get().objectAtHasBadZlibStream, Long.valueOf(pos),
+					getPackFile()));
 		}
 	}
 
@@ -1009,8 +1036,9 @@ public class PackFile implements Iterable<PackIndex.MutableEntry> {
 		}
 
 		default:
-			throw new IOException(MessageFormat.format(
-					JGitText.get().unknownObjectType, typeCode));
+			throw new IOException(
+					MessageFormat.format(JGitText.get().unknownObjectType,
+							Integer.valueOf(typeCode)));
 		}
 	}
 
@@ -1049,5 +1077,12 @@ public class PackFile implements Iterable<PackIndex.MutableEntry> {
 		synchronized (list) {
 			list.add(offset);
 		}
+	}
+
+	private File extFile(PackExt ext) {
+		String p = packFile.getName();
+		int dot = p.lastIndexOf('.');
+		String b = (dot < 0) ? p : p.substring(0, dot);
+		return new File(packFile.getParentFile(), b + '.' + ext.getExtension());
 	}
 }

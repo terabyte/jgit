@@ -45,17 +45,19 @@ package org.eclipse.jgit.api;
 import java.io.File;
 import java.io.IOException;
 import java.net.URISyntaxException;
+import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.concurrent.Callable;
 
+import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.api.errors.InvalidRemoteException;
 import org.eclipse.jgit.api.errors.JGitInternalException;
 import org.eclipse.jgit.dircache.DirCache;
 import org.eclipse.jgit.dircache.DirCacheCheckout;
 import org.eclipse.jgit.errors.IncorrectObjectTypeException;
 import org.eclipse.jgit.errors.MissingObjectException;
+import org.eclipse.jgit.internal.JGitText;
 import org.eclipse.jgit.lib.ConfigConstants;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.NullProgressMonitor;
@@ -65,7 +67,7 @@ import org.eclipse.jgit.lib.RefUpdate;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevWalk;
-import org.eclipse.jgit.transport.CredentialsProvider;
+import org.eclipse.jgit.submodule.SubmoduleWalk;
 import org.eclipse.jgit.transport.FetchResult;
 import org.eclipse.jgit.transport.RefSpec;
 import org.eclipse.jgit.transport.RemoteConfig;
@@ -78,7 +80,7 @@ import org.eclipse.jgit.transport.URIish;
  * @see <a href="http://www.kernel.org/pub/software/scm/git/docs/git-clone.html"
  *      >Git documentation about Clone</a>
  */
-public class CloneCommand implements Callable<Git> {
+public class CloneCommand extends TransportCommand<CloneCommand, Git> {
 
 	private String uri;
 
@@ -92,72 +94,84 @@ public class CloneCommand implements Callable<Git> {
 
 	private ProgressMonitor monitor = NullProgressMonitor.INSTANCE;
 
-	private CredentialsProvider credentialsProvider;
-
-	private int timeout;
-
 	private boolean cloneAllBranches;
+
+	private boolean cloneSubmodules;
+
+	private boolean noCheckout;
 
 	private Collection<String> branchesToClone;
 
 	/**
+	 * Create clone command with no repository set
+	 */
+	public CloneCommand() {
+		super(null);
+	}
+
+	/**
 	 * Executes the {@code Clone} command.
 	 *
-	 * @throws JGitInternalException
-	 *             if the repository can't be created
 	 * @return the newly created {@code Git} object with associated repository
+	 * @throws InvalidRemoteException
+	 * @throws org.eclipse.jgit.api.errors.TransportException
+	 * @throws GitAPIException
 	 */
-	public Git call() throws JGitInternalException {
+	public Git call() throws GitAPIException, InvalidRemoteException,
+			org.eclipse.jgit.api.errors.TransportException {
 		try {
 			URIish u = new URIish(uri);
 			Repository repository = init(u);
 			FetchResult result = fetch(repository, u);
-			checkout(repository, result);
+			if (!noCheckout)
+				checkout(repository, result);
 			return new Git(repository);
 		} catch (IOException ioe) {
 			throw new JGitInternalException(ioe.getMessage(), ioe);
-		} catch (InvalidRemoteException e) {
-			throw new JGitInternalException(e.getMessage(), e);
 		} catch (URISyntaxException e) {
-			throw new JGitInternalException(e.getMessage(), e);
+			throw new InvalidRemoteException(MessageFormat.format(
+					JGitText.get().invalidRemote, remote));
 		}
 	}
 
-	private Repository init(URIish u) {
+	private Repository init(URIish u) throws GitAPIException {
 		InitCommand command = Git.init();
 		command.setBare(bare);
 		if (directory == null)
 			directory = new File(u.getHumanishName(), Constants.DOT_GIT);
+		if (directory.exists() && directory.listFiles().length != 0)
+			throw new JGitInternalException(MessageFormat.format(
+					JGitText.get().cloneNonEmptyDirectory, directory.getName()));
 		command.setDirectory(directory);
 		return command.call().getRepository();
 	}
 
-	private FetchResult fetch(Repository repo, URIish u)
+	private FetchResult fetch(Repository clonedRepo, URIish u)
 			throws URISyntaxException,
-			JGitInternalException,
-			InvalidRemoteException, IOException {
+			org.eclipse.jgit.api.errors.TransportException, IOException,
+			GitAPIException {
 		// create the remote config and save it
-		RemoteConfig config = new RemoteConfig(repo.getConfig(), remote);
+		RemoteConfig config = new RemoteConfig(clonedRepo.getConfig(), remote);
 		config.addURI(u);
 
-		final String dst = Constants.R_REMOTES + config.getName();
+		final String dst = bare ? Constants.R_HEADS : Constants.R_REMOTES
+				+ config.getName();
 		RefSpec refSpec = new RefSpec();
 		refSpec = refSpec.setForceUpdate(true);
-		refSpec = refSpec.setSourceDestination(Constants.R_HEADS + "*", dst + "/*"); //$NON-NLS-1$ //$NON-NLS-2$
+		refSpec = refSpec.setSourceDestination(
+				Constants.R_HEADS + "*", dst + "/*"); //$NON-NLS-1$ //$NON-NLS-2$
 
 		config.addFetchRefSpec(refSpec);
-		config.update(repo.getConfig());
+		config.update(clonedRepo.getConfig());
 
-		repo.getConfig().save();
+		clonedRepo.getConfig().save();
 
 		// run the fetch command
-		FetchCommand command = new FetchCommand(repo);
+		FetchCommand command = new FetchCommand(clonedRepo);
 		command.setRemote(remote);
 		command.setProgressMonitor(monitor);
 		command.setTagOpt(TagOpt.FETCH_TAGS);
-		command.setTimeout(timeout);
-		if (credentialsProvider != null)
-			command.setCredentialsProvider(credentialsProvider);
+		configure(command);
 
 		List<RefSpec> specs = calculateRefSpecs(dst);
 		command.setRefSpecs(specs);
@@ -181,9 +195,9 @@ public class CloneCommand implements Callable<Git> {
 		return specs;
 	}
 
-	private void checkout(Repository repo, FetchResult result)
-			throws JGitInternalException,
-			MissingObjectException, IncorrectObjectTypeException, IOException {
+	private void checkout(Repository clonedRepo, FetchResult result)
+			throws MissingObjectException, IncorrectObjectTypeException,
+			IOException, GitAPIException {
 
 		Ref head = result.getAdvertisedRef(branch);
 		if (branch.equals(Constants.HEAD)) {
@@ -196,35 +210,67 @@ public class CloneCommand implements Callable<Git> {
 			return; // throw exception?
 
 		if (head.getName().startsWith(Constants.R_HEADS)) {
-			final RefUpdate newHead = repo.updateRef(Constants.HEAD);
+			final RefUpdate newHead = clonedRepo.updateRef(Constants.HEAD);
 			newHead.disableRefLog();
 			newHead.link(head.getName());
-			addMergeConfig(repo, head);
+			addMergeConfig(clonedRepo, head);
 		}
 
-		final RevCommit commit = parseCommit(repo, head);
+		final RevCommit commit = parseCommit(clonedRepo, head);
 
 		boolean detached = !head.getName().startsWith(Constants.R_HEADS);
-		RefUpdate u = repo.updateRef(Constants.HEAD, detached);
+		RefUpdate u = clonedRepo.updateRef(Constants.HEAD, detached);
 		u.setNewObjectId(commit.getId());
 		u.forceUpdate();
 
 		if (!bare) {
-			DirCache dc = repo.lockDirCache();
-			DirCacheCheckout co = new DirCacheCheckout(repo, dc,
+			DirCache dc = clonedRepo.lockDirCache();
+			DirCacheCheckout co = new DirCacheCheckout(clonedRepo, dc,
 					commit.getTree());
 			co.checkout();
+			if (cloneSubmodules)
+				cloneSubmodules(clonedRepo);
+		}
+	}
+
+	private void cloneSubmodules(Repository clonedRepo) throws IOException,
+			GitAPIException {
+		SubmoduleInitCommand init = new SubmoduleInitCommand(clonedRepo);
+		if (init.call().isEmpty())
+			return;
+
+		SubmoduleUpdateCommand update = new SubmoduleUpdateCommand(clonedRepo);
+		configure(update);
+		update.setProgressMonitor(monitor);
+		if (!update.call().isEmpty()) {
+			SubmoduleWalk walk = SubmoduleWalk.forIndex(clonedRepo);
+			while (walk.next()) {
+				Repository subRepo = walk.getRepository();
+				if (subRepo != null) {
+					try {
+						cloneSubmodules(subRepo);
+					} finally {
+						subRepo.close();
+					}
+				}
+			}
 		}
 	}
 
 	private Ref findBranchToCheckout(FetchResult result) {
-		Ref foundBranch = null;
 		final Ref idHEAD = result.getAdvertisedRef(Constants.HEAD);
+		if (idHEAD == null)
+			return null;
+
+		Ref master = result.getAdvertisedRef(Constants.R_HEADS
+				+ Constants.MASTER);
+		if (master != null && master.getObjectId().equals(idHEAD.getObjectId()))
+			return master;
+
+		Ref foundBranch = null;
 		for (final Ref r : result.getAdvertisedRefs()) {
 			final String n = r.getName();
 			if (!n.startsWith(Constants.R_HEADS))
-				continue;
-			if (idHEAD == null)
 				continue;
 			if (r.getObjectId().equals(idHEAD.getObjectId())) {
 				foundBranch = r;
@@ -234,19 +280,28 @@ public class CloneCommand implements Callable<Git> {
 		return foundBranch;
 	}
 
-	private void addMergeConfig(Repository repo, Ref head) throws IOException {
+	private void addMergeConfig(Repository clonedRepo, Ref head)
+			throws IOException {
 		String branchName = Repository.shortenRefName(head.getName());
-		repo.getConfig().setString(ConfigConstants.CONFIG_BRANCH_SECTION,
+		clonedRepo.getConfig().setString(ConfigConstants.CONFIG_BRANCH_SECTION,
 				branchName, ConfigConstants.CONFIG_KEY_REMOTE, remote);
-		repo.getConfig().setString(ConfigConstants.CONFIG_BRANCH_SECTION,
+		clonedRepo.getConfig().setString(ConfigConstants.CONFIG_BRANCH_SECTION,
 				branchName, ConfigConstants.CONFIG_KEY_MERGE, head.getName());
-		repo.getConfig().save();
+		String autosetupRebase = clonedRepo.getConfig().getString(
+				ConfigConstants.CONFIG_BRANCH_SECTION, null,
+				ConfigConstants.CONFIG_KEY_AUTOSETUPREBASE);
+		if (ConfigConstants.CONFIG_KEY_ALWAYS.equals(autosetupRebase)
+				|| ConfigConstants.CONFIG_KEY_REMOTE.equals(autosetupRebase))
+			clonedRepo.getConfig().setBoolean(
+					ConfigConstants.CONFIG_BRANCH_SECTION, branchName,
+					ConfigConstants.CONFIG_KEY_REBASE, true);
+		clonedRepo.getConfig().save();
 	}
 
-	private RevCommit parseCommit(final Repository repo, final Ref ref)
+	private RevCommit parseCommit(final Repository clonedRepo, final Ref ref)
 			throws MissingObjectException, IncorrectObjectTypeException,
 			IOException {
-		final RevWalk rw = new RevWalk(repo);
+		final RevWalk rw = new RevWalk(clonedRepo);
 		final RevCommit commit;
 		try {
 			commit = rw.parseCommit(ref.getObjectId());
@@ -292,8 +347,13 @@ public class CloneCommand implements Callable<Git> {
 	}
 
 	/**
+	 * The remote name used to keep track of the upstream repository for the
+	 * clone operation. If no remote name is set, the default value of
+	 * <code>Constants.DEFAULT_REMOTE_NAME</code> will be used.
+	 *
+	 * @see Constants#DEFAULT_REMOTE_NAME
 	 * @param remote
-	 *            the branch to keep track of in the origin repository
+	 *            name that keeps track of the upstream repository
 	 * @return this instance
 	 */
 	public CloneCommand setRemote(String remote) {
@@ -326,27 +386,6 @@ public class CloneCommand implements Callable<Git> {
 	}
 
 	/**
-	 * @param credentialsProvider
-	 *            the {@link CredentialsProvider} to use
-	 * @return {@code this}
-	 */
-	public CloneCommand setCredentialsProvider(
-			CredentialsProvider credentialsProvider) {
-		this.credentialsProvider = credentialsProvider;
-		return this;
-	}
-
-	/**
-	 * @param timeout
-	 *            the timeout used for the fetch step
-	 * @return {@code this}
-	 */
-	public CloneCommand setTimeout(int timeout) {
-		this.timeout = timeout;
-		return this;
-	}
-
-	/**
 	 * @param cloneAllBranches
 	 *            true when all branches have to be fetched (indicates wildcard
 	 *            in created fetch refspec), false otherwise.
@@ -354,6 +393,17 @@ public class CloneCommand implements Callable<Git> {
 	 */
 	public CloneCommand setCloneAllBranches(boolean cloneAllBranches) {
 		this.cloneAllBranches = cloneAllBranches;
+		return this;
+	}
+
+	/**
+	 * @param cloneSubmodules
+	 *            true to initialize and update submodules. Ignored when
+	 *            {@link #setBare(boolean)} is set to true.
+	 * @return {@code this}
+	 */
+	public CloneCommand setCloneSubmodules(boolean cloneSubmodules) {
+		this.cloneSubmodules = cloneSubmodules;
 		return this;
 	}
 
@@ -368,4 +418,15 @@ public class CloneCommand implements Callable<Git> {
 		return this;
 	}
 
+	/**
+	 * @param noCheckout
+	 *            if set to <code>true</code> no branch will be checked out
+	 *            after the clone. This enhances performance of the clone
+	 *            command when there is no need for a checked out branch.
+	 * @return {@code this}
+	 */
+	public CloneCommand setNoCheckout(boolean noCheckout) {
+		this.noCheckout = noCheckout;
+		return this;
+	}
 }

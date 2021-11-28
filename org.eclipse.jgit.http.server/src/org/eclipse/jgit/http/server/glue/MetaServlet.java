@@ -46,21 +46,16 @@ package org.eclipse.jgit.http.server.glue;
 import static javax.servlet.http.HttpServletResponse.SC_NOT_FOUND;
 
 import java.io.IOException;
-import java.text.MessageFormat;
-import java.util.AbstractSet;
-import java.util.ArrayList;
-import java.util.IdentityHashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
+import javax.servlet.FilterChain;
+import javax.servlet.ServletConfig;
+import javax.servlet.ServletContext;
 import javax.servlet.ServletException;
+import javax.servlet.ServletRequest;
+import javax.servlet.ServletResponse;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-
-import org.eclipse.jgit.http.server.HttpServerText;
 
 /**
  * Generic container servlet to manage routing to different pipelines.
@@ -77,15 +72,26 @@ import org.eclipse.jgit.http.server.HttpServerText;
 public class MetaServlet extends HttpServlet {
 	private static final long serialVersionUID = 1L;
 
-	static final String REGEX_GROUPS = "org.eclipse.jgit.http.server.glue.MetaServlet.serveRegex";
-
-	private final List<ServletBinderImpl> bindings;
-
-	private volatile UrlPipeline[] pipelines;
+	private final MetaFilter filter;
 
 	/** Empty servlet with no bindings. */
 	public MetaServlet() {
-		this.bindings = new ArrayList<ServletBinderImpl>();
+		this(new MetaFilter());
+	}
+
+	/**
+	 * Initialize a servlet wrapping a filter.
+	 *
+	 * @param delegateFilter
+	 *            the filter being wrapped by the servlet.
+	 */
+	protected MetaServlet(MetaFilter delegateFilter) {
+		filter = delegateFilter;
+	}
+
+	/** @return filter this servlet delegates all routing logic to. */
+	protected MetaFilter getDelegateFilter() {
+		return filter;
 	}
 
 	/**
@@ -96,9 +102,7 @@ public class MetaServlet extends HttpServlet {
 	 * @return binder for the passed path.
 	 */
 	public ServletBinder serve(String path) {
-		if (path.startsWith("*"))
-			return register(new SuffixPipeline.Binder(path.substring(1)));
-		throw new IllegalArgumentException(MessageFormat.format(HttpServerText.get().pathNotSupported, path));
+		return filter.serve(path);
 	}
 
 	/**
@@ -109,68 +113,30 @@ public class MetaServlet extends HttpServlet {
 	 * @return binder for the passed expression.
 	 */
 	public ServletBinder serveRegex(String expression) {
-		return register(new RegexPipeline.Binder(expression));
-	}
-
-	public void destroy() {
-		if (pipelines != null) {
-			Set<Object> destroyed = newIdentitySet();
-			for (UrlPipeline p : pipelines)
-				p.destroy(destroyed);
-			pipelines = null;
-		}
-	}
-
-	private static Set<Object> newIdentitySet() {
-		final Map<Object, Object> m = new IdentityHashMap<Object, Object>();
-		return new AbstractSet<Object>() {
-			@Override
-			public boolean add(Object o) {
-				return m.put(o, o) == null;
-			}
-
-			@Override
-			public boolean contains(Object o) {
-				return m.keySet().contains(o);
-			}
-
-			@Override
-			public Iterator<Object> iterator() {
-				return m.keySet().iterator();
-			}
-
-			@Override
-			public int size() {
-				return m.size();
-			}
-		};
+		return filter.serveRegex(expression);
 	}
 
 	@Override
-	protected void service(final HttpServletRequest req,
-			final HttpServletResponse rsp) throws ServletException, IOException {
-		final UrlPipeline p = find(req);
-		if (p != null)
-			p.service(req, rsp);
-		else
-			rsp.sendError(SC_NOT_FOUND);
+	public void init(ServletConfig config) throws ServletException {
+		String name = filter.getClass().getName();
+		ServletContext ctx = config.getServletContext();
+		filter.init(new NoParameterFilterConfig(name, ctx));
 	}
 
-	private UrlPipeline find(final HttpServletRequest req)
-			throws ServletException {
-		for (UrlPipeline p : getPipelines())
-			if (p.match(req))
-				return p;
-		return null;
+	public void destroy() {
+		filter.destroy();
 	}
 
-	private ServletBinder register(ServletBinderImpl b) {
-		synchronized (bindings) {
-			if (pipelines != null)
-				throw new IllegalStateException(HttpServerText.get().servletAlreadyInitialized);
-			bindings.add(b);
-		}
-		return register((ServletBinder) b);
+	@Override
+	protected void service(HttpServletRequest req, HttpServletResponse res)
+			throws ServletException, IOException {
+		filter.doFilter(req, res, new FilterChain() {
+			public void doFilter(ServletRequest request,
+					ServletResponse response) throws IOException,
+					ServletException {
+				((HttpServletResponse) response).sendError(SC_NOT_FOUND);
+			}
+		});
 	}
 
 	/**
@@ -182,32 +148,6 @@ public class MetaServlet extends HttpServlet {
 	 *         filters into the pipeline.
 	 */
 	protected ServletBinder register(ServletBinder b) {
-		return b;
-	}
-
-	private UrlPipeline[] getPipelines() throws ServletException {
-		UrlPipeline[] r = pipelines;
-		if (r == null) {
-			synchronized (bindings) {
-				r = pipelines;
-				if (r == null) {
-					r = createPipelines();
-					pipelines = r;
-				}
-			}
-		}
-		return r;
-	}
-
-	private UrlPipeline[] createPipelines() throws ServletException {
-		UrlPipeline[] array = new UrlPipeline[bindings.size()];
-
-		for (int i = 0; i < bindings.size(); i++)
-			array[i] = bindings.get(i).create();
-
-		Set<Object> inited = newIdentitySet();
-		for (UrlPipeline p : array)
-			p.init(getServletContext(), inited);
-		return array;
+		return filter.register(b);
 	}
 }

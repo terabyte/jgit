@@ -45,10 +45,10 @@ package org.eclipse.jgit.revwalk.filter;
 
 import java.io.IOException;
 
-import org.eclipse.jgit.JGitText;
 import org.eclipse.jgit.errors.IncorrectObjectTypeException;
 import org.eclipse.jgit.errors.MissingObjectException;
 import org.eclipse.jgit.errors.StopWalkException;
+import org.eclipse.jgit.internal.JGitText;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevWalk;
 
@@ -114,7 +114,7 @@ public abstract class RevFilter {
 
 		@Override
 		public String toString() {
-			return "ALL";
+			return "ALL"; //$NON-NLS-1$
 		}
 	}
 
@@ -139,7 +139,7 @@ public abstract class RevFilter {
 
 		@Override
 		public String toString() {
-			return "NONE";
+			return "NONE"; //$NON-NLS-1$
 		}
 	}
 
@@ -164,7 +164,7 @@ public abstract class RevFilter {
 
 		@Override
 		public String toString() {
-			return "NO_MERGES";
+			return "NO_MERGES"; //$NON-NLS-1$
 		}
 	}
 
@@ -196,7 +196,7 @@ public abstract class RevFilter {
 
 		@Override
 		public String toString() {
-			return "MERGE_BASE";
+			return "MERGE_BASE"; //$NON-NLS-1$
 		}
 	}
 

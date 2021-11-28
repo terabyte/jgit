@@ -48,7 +48,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 
-import org.eclipse.jgit.JGitText;
+import org.eclipse.jgit.internal.JGitText;
 
 /** An exception detailing multiple reasons for failure. */
 public class CompoundException extends Exception {
@@ -58,9 +58,9 @@ public class CompoundException extends Exception {
 		final StringBuilder msg = new StringBuilder();
 		msg.append(JGitText.get().failureDueToOneOfTheFollowing);
 		for (final Throwable c : causes) {
-			msg.append("  ");
+			msg.append("  "); //$NON-NLS-1$
 			msg.append(c.getMessage());
-			msg.append("\n");
+			msg.append("\n"); //$NON-NLS-1$
 		}
 		return msg.toString();
 	}

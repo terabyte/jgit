@@ -57,7 +57,8 @@ import java.util.List;
 import java.util.zip.CRC32;
 import java.util.zip.Deflater;
 
-import org.eclipse.jgit.JGitText;
+import org.eclipse.jgit.errors.LockFailedException;
+import org.eclipse.jgit.internal.JGitText;
 import org.eclipse.jgit.lib.AnyObjectId;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.CoreConfig;
@@ -170,10 +171,10 @@ public class ObjectDirectoryPackParser extends PackParser {
 	@Override
 	public PackLock parse(ProgressMonitor receiving, ProgressMonitor resolving)
 			throws IOException {
-		tmpPack = File.createTempFile("incoming_", ".pack", db.getDirectory());
-		tmpIdx = new File(db.getDirectory(), baseName(tmpPack) + ".idx");
+		tmpPack = File.createTempFile("incoming_", ".pack", db.getDirectory()); //$NON-NLS-1$ //$NON-NLS-2$
+		tmpIdx = new File(db.getDirectory(), baseName(tmpPack) + ".idx"); //$NON-NLS-1$
 		try {
-			out = new RandomAccessFile(tmpPack, "rw");
+			out = new RandomAccessFile(tmpPack, "rw"); //$NON-NLS-1$
 
 			super.parse(receiving, resolving);
 
@@ -199,6 +200,11 @@ public class ObjectDirectoryPackParser extends PackParser {
 			}
 			cleanupTemporaryFiles();
 		}
+	}
+
+	@Override
+	protected void onPackHeader(long objectCount) throws IOException {
+		// Ignored, the count is not required.
 	}
 
 	@Override
@@ -229,6 +235,12 @@ public class ObjectDirectoryPackParser extends PackParser {
 		UnresolvedDelta delta = new UnresolvedDelta();
 		delta.setCRC((int) crc.getValue());
 		return delta;
+	}
+
+	@Override
+	protected void onInflatedObjectData(PackedObjectInfo obj, int typeCode,
+			byte[] data) throws IOException {
+		// ObjectDirectory ignores this event.
 	}
 
 	@Override
@@ -413,9 +425,9 @@ public class ObjectDirectoryPackParser extends PackParser {
 		}
 
 		final String name = ObjectId.fromRaw(d.digest()).name();
-		final File packDir = new File(db.getDirectory(), "pack");
-		final File finalPack = new File(packDir, "pack-" + name + ".pack");
-		final File finalIdx = new File(packDir, "pack-" + name + ".idx");
+		final File packDir = new File(db.getDirectory(), "pack"); //$NON-NLS-1$
+		final File finalPack = new File(packDir, "pack-" + name + ".pack"); //$NON-NLS-1$ //$NON-NLS-2$
+		final File finalIdx = new File(packDir, "pack-" + name + ".idx"); //$NON-NLS-1$ //$NON-NLS-2$
 		final PackLock keep = new PackLock(finalPack, db.getFS());
 
 		if (!packDir.exists() && !packDir.mkdir() && !packDir.exists()) {
@@ -441,8 +453,9 @@ public class ObjectDirectoryPackParser extends PackParser {
 			//
 			try {
 				if (!keep.lock(lockMessage))
-					throw new IOException(MessageFormat.format(
-							JGitText.get().cannotLockPackIn, finalPack));
+					throw new LockFailedException(finalPack,
+							MessageFormat.format(
+									JGitText.get().cannotLockPackIn, finalPack));
 			} catch (IOException e) {
 				cleanupTemporaryFiles();
 				throw e;
@@ -466,7 +479,7 @@ public class ObjectDirectoryPackParser extends PackParser {
 		}
 
 		try {
-			newPack = db.openPack(finalPack, finalIdx);
+			newPack = db.openPack(finalPack);
 		} catch (IOException err) {
 			keep.unlock();
 			if (finalPack.exists())

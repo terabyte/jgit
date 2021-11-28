@@ -48,11 +48,11 @@ package org.eclipse.jgit.lib;
 import java.io.IOException;
 import java.text.MessageFormat;
 
-import org.eclipse.jgit.JGitText;
 import org.eclipse.jgit.errors.CorruptObjectException;
 import org.eclipse.jgit.errors.EntryExistsException;
 import org.eclipse.jgit.errors.MissingObjectException;
 import org.eclipse.jgit.errors.ObjectWritingException;
+import org.eclipse.jgit.internal.JGitText;
 import org.eclipse.jgit.util.RawParseUtils;
 
 /**
@@ -593,7 +593,7 @@ public class Tree extends TreeEntry {
 	public String toString() {
 		final StringBuilder r = new StringBuilder();
 		r.append(ObjectId.toString(getId()));
-		r.append(" T ");
+		r.append(" T "); //$NON-NLS-1$
 		r.append(getFullName());
 		return r.toString();
 	}

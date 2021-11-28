@@ -49,6 +49,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 
+import org.eclipse.jgit.dircache.DirCacheCheckout;
 import org.eclipse.jgit.errors.CorruptObjectException;
 import org.eclipse.jgit.errors.IncorrectObjectTypeException;
 import org.eclipse.jgit.lib.Constants;
@@ -647,13 +648,33 @@ public abstract class AbstractTreeIterator {
 	}
 
 	/**
-	 * Get the name component of the current entry path into the provided buffer.
+	 * JGit internal API for use by {@link DirCacheCheckout}
 	 *
-	 * @param buffer the buffer to get the name into, it is assumed that buffer can hold the name
-	 * @param offset the offset of the name in the buffer
+	 * @return start of name component part within {@link #getEntryPathBuffer()}
+	 * @since 2.0
+	 */
+	public int getNameOffset() {
+		return pathOffset;
+	}
+
+	/**
+	 * Get the name component of the current entry path into the provided
+	 * buffer.
+	 *
+	 * @param buffer
+	 *            the buffer to get the name into, it is assumed that buffer can
+	 *            hold the name
+	 * @param offset
+	 *            the offset of the name in the buffer
 	 * @see #getNameLength()
 	 */
 	public void getName(byte[] buffer, int offset) {
 		System.arraycopy(path, pathOffset, buffer, offset, pathLen - pathOffset);
+	}
+
+	@SuppressWarnings("nls")
+	@Override
+	public String toString() {
+		return getClass().getSimpleName() + "[" + getEntryPathString() + "]"; //$NON-NLS-1$
 	}
 }

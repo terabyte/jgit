@@ -47,24 +47,31 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.text.MessageFormat;
 
-import org.eclipse.jgit.JGitText;
+import org.eclipse.jgit.internal.JGitText;
 
 /**
  * Multiplexes data and progress messages.
  * <p>
  * This stream is buffered at packet sizes, so the caller doesn't need to wrap
  * it in yet another buffered stream.
+ *
+ * @since 2.0
  */
-class SideBandOutputStream extends OutputStream {
-	static final int CH_DATA = SideBandInputStream.CH_DATA;
+public class SideBandOutputStream extends OutputStream {
+	/** Channel used for pack data. */
+	public static final int CH_DATA = SideBandInputStream.CH_DATA;
 
-	static final int CH_PROGRESS = SideBandInputStream.CH_PROGRESS;
+	/** Channel used for progress messages. */
+	public static final int CH_PROGRESS = SideBandInputStream.CH_PROGRESS;
 
-	static final int CH_ERROR = SideBandInputStream.CH_ERROR;
+	/** Channel used for error messages. */
+	public static final int CH_ERROR = SideBandInputStream.CH_ERROR;
 
-	static final int SMALL_BUF = 1000;
+	/** Default buffer size for a small amount of data. */
+	public static final int SMALL_BUF = 1000;
 
-	static final int MAX_BUF = 65520;
+	/** Maximum buffer size for a single packet of sideband data. */
+	public static final int MAX_BUF = 65520;
 
 	static final int HDR_SIZE = 5;
 
@@ -95,13 +102,19 @@ class SideBandOutputStream extends OutputStream {
 	 *            stream that the packets are written onto. This stream should
 	 *            be attached to a SideBandInputStream on the remote side.
 	 */
-	SideBandOutputStream(final int chan, final int sz, final OutputStream os) {
+	public SideBandOutputStream(final int chan, final int sz, final OutputStream os) {
 		if (chan <= 0 || chan > 255)
-			throw new IllegalArgumentException(MessageFormat.format(JGitText.get().channelMustBeInRange0_255, chan));
+			throw new IllegalArgumentException(MessageFormat.format(
+					JGitText.get().channelMustBeInRange0_255,
+					Integer.valueOf(chan)));
 		if (sz <= HDR_SIZE)
-			throw new IllegalArgumentException(MessageFormat.format(JGitText.get().packetSizeMustBeAtLeast, sz, HDR_SIZE));
+			throw new IllegalArgumentException(MessageFormat.format(
+					JGitText.get().packetSizeMustBeAtLeast,
+					Integer.valueOf(sz), Integer.valueOf(HDR_SIZE)));
 		else if (MAX_BUF < sz)
-			throw new IllegalArgumentException(MessageFormat.format(JGitText.get().packetSizeMustBeAtMost, sz, MAX_BUF));
+			throw new IllegalArgumentException(MessageFormat.format(
+					JGitText.get().packetSizeMustBeAtMost, Integer.valueOf(sz),
+					Integer.valueOf(MAX_BUF)));
 
 		out = os;
 		buffer = new byte[sz];

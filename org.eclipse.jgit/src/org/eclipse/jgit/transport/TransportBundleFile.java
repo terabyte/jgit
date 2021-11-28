@@ -55,9 +55,9 @@ import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
-import org.eclipse.jgit.JGitText;
 import org.eclipse.jgit.errors.NotSupportedException;
 import org.eclipse.jgit.errors.TransportException;
+import org.eclipse.jgit.internal.JGitText;
 import org.eclipse.jgit.lib.Repository;
 
 class TransportBundleFile extends Transport implements TransportBundle {
@@ -92,8 +92,8 @@ class TransportBundleFile extends Transport implements TransportBundle {
 		@Override
 		public Transport open(URIish uri, Repository local, String remoteName)
 				throws NotSupportedException, TransportException {
-			if ("bundle".equals(uri.getScheme())) {
-				File path = local.getFS().resolve(new File("."), uri.getPath());
+			if ("bundle".equals(uri.getScheme())) { //$NON-NLS-1$
+				File path = local.getFS().resolve(new File("."), uri.getPath()); //$NON-NLS-1$
 				return new TransportBundleFile(local, uri, path);
 			}
 

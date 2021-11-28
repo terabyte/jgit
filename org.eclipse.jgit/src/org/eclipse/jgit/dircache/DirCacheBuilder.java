@@ -48,7 +48,7 @@ import java.io.IOException;
 import java.text.MessageFormat;
 import java.util.Arrays;
 
-import org.eclipse.jgit.JGitText;
+import org.eclipse.jgit.internal.JGitText;
 import org.eclipse.jgit.lib.AnyObjectId;
 import org.eclipse.jgit.lib.ObjectReader;
 import org.eclipse.jgit.treewalk.AbstractTreeIterator;
@@ -244,7 +244,7 @@ public class DirCacheBuilder extends BaseDirCacheEditor {
 
 	private static IllegalStateException bad(final DirCacheEntry a,
 			final String msg) {
-		return new IllegalStateException(msg + ": " + a.getStage() + " "
+		return new IllegalStateException(msg + ": " + a.getStage() + " " //$NON-NLS-1$ //$NON-NLS-2$
 				+ a.getPathString());
 	}
 }

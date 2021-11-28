@@ -50,17 +50,17 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 
-import org.eclipse.jgit.JGitText;
+import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.api.errors.InvalidRemoteException;
 import org.eclipse.jgit.api.errors.JGitInternalException;
 import org.eclipse.jgit.errors.NotSupportedException;
 import org.eclipse.jgit.errors.TransportException;
+import org.eclipse.jgit.internal.JGitText;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.NullProgressMonitor;
 import org.eclipse.jgit.lib.ProgressMonitor;
 import org.eclipse.jgit.lib.Ref;
 import org.eclipse.jgit.lib.Repository;
-import org.eclipse.jgit.transport.CredentialsProvider;
 import org.eclipse.jgit.transport.PushResult;
 import org.eclipse.jgit.transport.RefSpec;
 import org.eclipse.jgit.transport.RemoteConfig;
@@ -75,7 +75,8 @@ import org.eclipse.jgit.transport.Transport;
  * @see <a href="http://www.kernel.org/pub/software/scm/git/docs/git-push.html"
  *      >Git documentation about Push</a>
  */
-public class PushCommand extends GitCommand<Iterable<PushResult>> {
+public class PushCommand extends
+		TransportCommand<PushCommand, Iterable<PushResult>> {
 
 	private String remote = Constants.DEFAULT_REMOTE_NAME;
 
@@ -90,10 +91,6 @@ public class PushCommand extends GitCommand<Iterable<PushResult>> {
 	private boolean force;
 
 	private boolean thin = Transport.DEFAULT_PUSH_THIN;
-
-	private int timeout;
-
-	private CredentialsProvider credentialsProvider;
 
 	/**
 	 * @param repo
@@ -112,18 +109,23 @@ public class PushCommand extends GitCommand<Iterable<PushResult>> {
 	 * @return an iteration over {@link PushResult} objects
 	 * @throws InvalidRemoteException
 	 *             when called with an invalid remote uri
-	 * @throws JGitInternalException
-	 *             a low-level exception of JGit has occurred. The original
-	 *             exception can be retrieved by calling
-	 *             {@link Exception#getCause()}.
+	 * @throws org.eclipse.jgit.api.errors.TransportException
+	 *             when an error occurs with the transport
+	 * @throws GitAPIException
 	 */
-	public Iterable<PushResult> call() throws JGitInternalException,
-			InvalidRemoteException {
+	public Iterable<PushResult> call() throws GitAPIException,
+			InvalidRemoteException,
+			org.eclipse.jgit.api.errors.TransportException {
 		checkCallable();
 
 		ArrayList<PushResult> pushResults = new ArrayList<PushResult>(3);
 
 		try {
+			if (refSpecs.isEmpty()) {
+				RemoteConfig config = new RemoteConfig(repo.getConfig(),
+						getRemote());
+				refSpecs.addAll(config.getPushRefSpecs());
+			}
 			if (refSpecs.isEmpty()) {
 				Ref head = repo.getRef(Constants.HEAD);
 				if (head != null && head.isSymbolic())
@@ -138,14 +140,11 @@ public class PushCommand extends GitCommand<Iterable<PushResult>> {
 			final List<Transport> transports;
 			transports = Transport.openAll(repo, remote, Transport.Operation.PUSH);
 			for (final Transport transport : transports) {
-				if (0 <= timeout)
-					transport.setTimeout(timeout);
 				transport.setPushThin(thin);
 				if (receivePack != null)
 					transport.setOptionReceivePack(receivePack);
 				transport.setDryRun(dryRun);
-				if (credentialsProvider != null)
-					transport.setCredentialsProvider(credentialsProvider);
+				configure(transport);
 
 				final Collection<RemoteRefUpdate> toPush = transport
 						.findRemoteRefUpdatesFor(refSpecs);
@@ -155,9 +154,8 @@ public class PushCommand extends GitCommand<Iterable<PushResult>> {
 					pushResults.add(result);
 
 				} catch (TransportException e) {
-					throw new JGitInternalException(
-							JGitText.get().exceptionCaughtDuringExecutionOfPushCommand,
-							e);
+					throw new org.eclipse.jgit.api.errors.TransportException(
+							e.getMessage(), e);
 				} finally {
 					transport.close();
 				}
@@ -166,6 +164,9 @@ public class PushCommand extends GitCommand<Iterable<PushResult>> {
 		} catch (URISyntaxException e) {
 			throw new InvalidRemoteException(MessageFormat.format(
 					JGitText.get().invalidRemote, remote));
+		} catch (TransportException e) {
+			throw new org.eclipse.jgit.api.errors.TransportException(
+					e.getMessage(), e);
 		} catch (NotSupportedException e) {
 			throw new JGitInternalException(
 					JGitText.get().exceptionCaughtDuringExecutionOfPushCommand,
@@ -222,17 +223,6 @@ public class PushCommand extends GitCommand<Iterable<PushResult>> {
 	 */
 	public String getReceivePack() {
 		return receivePack;
-	}
-
-	/**
-	 * @param timeout
-	 *            the timeout used for the push operation
-	 * @return {@code this}
-	 */
-	public PushCommand setTimeout(int timeout) {
-		checkCallable();
-		this.timeout = timeout;
-		return this;
 	}
 
 	/**
@@ -338,7 +328,7 @@ public class PushCommand extends GitCommand<Iterable<PushResult>> {
 	 * @throws JGitInternalException
 	 *             the reference name cannot be resolved.
 	 */
-	public PushCommand add(String nameOrSpec) throws JGitInternalException {
+	public PushCommand add(String nameOrSpec) {
 		if (0 <= nameOrSpec.indexOf(':')) {
 			refSpecs.add(new RefSpec(nameOrSpec));
 		} else {
@@ -412,18 +402,6 @@ public class PushCommand extends GitCommand<Iterable<PushResult>> {
 	public PushCommand setForce(boolean force) {
 		checkCallable();
 		this.force = force;
-		return this;
-	}
-
-	/**
-	 * @param credentialsProvider
-	 *            the {@link CredentialsProvider} to use
-	 * @return {@code this}
-	 */
-	public PushCommand setCredentialsProvider(
-			CredentialsProvider credentialsProvider) {
-		checkCallable();
-		this.credentialsProvider = credentialsProvider;
 		return this;
 	}
 }
