@@ -15,6 +15,7 @@ import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.List;
+import java.util.regex.Pattern;
 
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.api.errors.JGitInternalException;
@@ -61,6 +62,8 @@ public class DiffCommand extends GitCommand<List<DiffEntry>> {
 
 	private ProgressMonitor monitor = NullProgressMonitor.INSTANCE;
 
+	private Pattern deltaFilterPattern = null;
+
 	/**
 	 * Constructor for DiffCommand
 	 *
@@ -84,6 +87,11 @@ public class DiffCommand extends GitCommand<List<DiffEntry>> {
 	 * collected by the setter methods (e.g. {@link #setCached(boolean)} of this
 	 * class. Each instance of this class should only be used for one invocation
 	 * of the command. Don't call this method twice on an instance.
+	 *
+	 * Team-Devatscale SC customization to filter some files based on a regex pattern.
+	 * This filter will not be applied if showNameAndStatusOnly is set to true and no
+	 * regex pattern is passed. Formatting is applied to all files returned by
+	 * DiffFormatter.scan() if showNameAndStatusOnly is false.
 	 */
 	@Override
 	public List<DiffEntry> call() throws GitAPIException {
@@ -114,9 +122,6 @@ public class DiffCommand extends GitCommand<List<DiffEntry>> {
 			diffFmt.setPathFilter(pathFilter);
 
 			List<DiffEntry> result = diffFmt.scan(oldTree, newTree);
-			if (showNameAndStatusOnly) {
-				return result;
-			}
 			if (contextLines >= 0) {
 				diffFmt.setContext(contextLines);
 			}
@@ -126,7 +131,16 @@ public class DiffCommand extends GitCommand<List<DiffEntry>> {
 			if (sourcePrefix != null) {
 				diffFmt.setOldPrefix(sourcePrefix);
 			}
-			diffFmt.format(result);
+
+			if (showNameAndStatusOnly) {
+				if (this.getDeltaFilterPattern() != null) {
+					diffFmt.filterModifiedFiles(result, this.getDeltaFilterPattern());
+					diffFmt.flush();
+				}
+				return result;
+			}
+
+			diffFmt.format(result, this.getDeltaFilterPattern());
 			diffFmt.flush();
 			return result;
 		} catch (IOException e) {
@@ -256,6 +270,26 @@ public class DiffCommand extends GitCommand<List<DiffEntry>> {
 			monitor = NullProgressMonitor.INSTANCE;
 		}
 		this.monitor = monitor;
+		return this;
+	}
+
+	/**
+	 * Get deltaFilterPattern
+	 * @return deltaFilterPattern
+	 */
+	public Pattern getDeltaFilterPattern() {
+		return deltaFilterPattern;
+	}
+
+	/**
+	 * Set the given delta filter regex pattern. Used only for Source Control.
+	 *
+	 * @param deltaFilterPattern
+	 *            the filter pattern
+	 * @return this instance
+	 */
+	public DiffCommand setDeltaFilterPattern(Pattern deltaFilterPattern) {
+		this.deltaFilterPattern = deltaFilterPattern;
 		return this;
 	}
 }
