@@ -17,6 +17,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.List;
+import java.util.regex.Pattern;
 
 import org.eclipse.jgit.diff.DiffEntry;
 import org.eclipse.jgit.diff.DiffEntry.ChangeType;
@@ -210,6 +211,29 @@ public class DiffCommandTest extends RepositoryTestCase {
 			assertEquals("test.txt", diff.getOldPath());
 			assertEquals("test.txt", diff.getNewPath());
 		}
+	}
+
+	@Test
+	/**
+	 * Setting a delta filter Pattern (applies to any file) with regex that matches the
+	 * change: diff skipped.
+	 */
+	public void testDiffModified_anyDeltaFilter() throws Exception {
+		write(new File(db.getWorkTree(), "test.txt"), "test");
+		File folder = new File(db.getWorkTree(), "folder");
+		folder.mkdir();
+		write(new File(folder, "folder.txt"), "folder");
+		Git git = new Git(db);
+		git.add().addFilepattern(".").call();
+		git.commit().setMessage("Initial commit").call();
+		write(new File(folder, "folder.txt"), "folderchange");
+
+		OutputStream out = new ByteArrayOutputStream();
+		Pattern deltaFilterPattern = Pattern.compile("change");
+		List<DiffEntry> entries = git.diff().setDeltaFilterPattern(deltaFilterPattern).setOutputStream(out).call();
+		assertEquals(0, entries.size());
+
+		assertEquals("", out.toString());
 	}
 
 	private AbstractTreeIterator getTreeIterator(String name)

@@ -41,6 +41,7 @@ import org.apache.sshd.client.session.ClientSession;
 import org.apache.sshd.client.session.forward.PortForwardingTracker;
 import org.apache.sshd.common.AttributeRepository;
 import org.apache.sshd.common.SshException;
+import org.apache.sshd.common.channel.PtyChannelConfiguration;
 import org.apache.sshd.common.future.CloseFuture;
 import org.apache.sshd.common.future.SshFutureListener;
 import org.apache.sshd.common.util.io.IoUtils;
@@ -299,9 +300,11 @@ public class SshdSession implements RemoteSession2 {
 	@Override
 	public Process exec(String commandName, Map<String, String> environment,
 			int timeout) throws IOException {
+
+		PtyChannelConfiguration config = new PtyChannelConfiguration();
+		config.setPtyType("dummy");
 		@SuppressWarnings("resource")
-		ChannelExec exec = session.createExecChannel(commandName, null,
-				environment);
+		ChannelExec exec = session.createExecChannel(commandName, config, environment);
 		if (timeout <= 0) {
 			try {
 				exec.open().verify();
