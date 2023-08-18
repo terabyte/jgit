@@ -37,6 +37,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.security.AccessControlException;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -60,6 +61,7 @@ import org.eclipse.jgit.transport.RefSpec;
 import org.eclipse.jgit.util.FS;
 import org.eclipse.jgit.util.SystemReader;
 import org.junit.After;
+import org.junit.Assume;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -236,13 +238,22 @@ public class ConfigTest {
 
 	@Test
 	public void testReadUserConfigWithInvalidCharactersStripped() {
+		String authorName = null;
+		try {
+			authorName = SystemReader.getInstance().getenv(Constants.GIT_AUTHOR_NAME_KEY);
+		} catch (AccessControlException e) {
+			// do nothing;
+		}
+
+		Assume.assumeTrue(authorName == null);
+		
 		final MockSystemReader mockSystemReader = new MockSystemReader();
 		final Config localConfig = new Config(mockSystemReader.openUserConfig(
 				null, FS.DETECTED));
 
 		localConfig.setString("user", null, "name", "foo<bar");
 		localConfig.setString("user", null, "email", "baz>\nqux@example.com");
-
+		
 		UserConfig userConfig = localConfig.get(UserConfig.KEY);
 		assertEquals("foobar", userConfig.getAuthorName());
 		assertEquals("bazqux@example.com", userConfig.getAuthorEmail());

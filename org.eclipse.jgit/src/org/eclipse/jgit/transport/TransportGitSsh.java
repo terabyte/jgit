@@ -16,6 +16,7 @@ package org.eclipse.jgit.transport;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.security.AccessControlException;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -201,8 +202,16 @@ public class TransportGitSsh extends SshTransport implements PackTransport {
 		return new NoRemoteRepositoryException(uri, why);
 	}
 
+	/**
+	 * Added a try/catch to return false if cannot access the environment variable.
+	 * @return ture if environment variable GIT_SSH exists; false otherwise
+	 */
 	private static boolean useExtSession() {
-		return SystemReader.getInstance().getenv("GIT_SSH") != null; //$NON-NLS-1$
+		try {
+			return SystemReader.getInstance().getenv("GIT_SSH") != null; //$NON-NLS-1$
+		} catch (AccessControlException e){
+			return false;
+		}
 	}
 
 	private class ExtSession implements RemoteSession2 {

@@ -23,6 +23,7 @@ import java.nio.charset.UnsupportedCharsetException;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.AccessControlException;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
 import java.text.DateFormat;
@@ -91,7 +92,14 @@ public abstract class SystemReader {
 
 		@Override
 		public String getenv(String variable) {
-			return System.getenv(variable);
+			String envValue = null;
+			try {
+				envValue = System.getenv(variable);
+			} catch (AccessControlException ex) {
+				// do nothing
+			}
+
+			return envValue;
 		}
 
 		@Override
@@ -101,12 +109,10 @@ public abstract class SystemReader {
 
 		@Override
 		public FileBasedConfig openSystemConfig(Config parent, FS fs) {
-			if (StringUtils
+			File configFile = fs.getGitSystemConfig();
+			if (configFile != null && StringUtils
 					.isEmptyOrNull(getenv(Constants.GIT_CONFIG_NOSYSTEM_KEY))) {
-				File configFile = fs.getGitSystemConfig();
-				if (configFile != null) {
 					return new FileBasedConfig(parent, configFile, fs);
-				}
 			}
 			return new FileBasedConfig(parent, null, fs) {
 				@Override

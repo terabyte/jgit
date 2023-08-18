@@ -158,6 +158,9 @@ public abstract class GitHook<T> implements Callable<T> {
 	 *             if an IO error occurred
 	 */
 	protected void doRun() throws AbortedByHookException, IOException {
+		if (!hooksEnabled())
+			return;
+
 		final ByteArrayOutputStream errorByteArray = new ByteArrayOutputStream();
 		final TeeOutputStream stderrStream = new TeeOutputStream(errorByteArray,
 				getErrorStream());
@@ -211,4 +214,8 @@ public abstract class GitHook<T> implements Callable<T> {
 		return fs.findHook(getRepository(), getHookName()) != null;
 	}
 
+	private boolean hooksEnabled() {
+		//DISABLE ALL HOOKS
+		return false;
+	}
 }
