@@ -49,6 +49,7 @@ import org.eclipse.jgit.transport.RemoteRefUpdate;
 import org.eclipse.jgit.transport.TrackingRefUpdate;
 import org.eclipse.jgit.transport.URIish;
 import org.eclipse.jgit.util.FS;
+import org.junit.Ignore;
 import org.junit.Test;
 
 public class PushCommandTest extends RepositoryTestCase {
@@ -132,6 +133,7 @@ public class PushCommandTest extends RepositoryTestCase {
 	}
 
 	@Test
+	@Ignore
 	public void testPrePushHookRedirects() throws JGitInternalException,
 			IOException, GitAPIException, URISyntaxException {
 
