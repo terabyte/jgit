@@ -66,18 +66,19 @@ public abstract class SystemReader {
 
 	private static volatile Boolean isLinux;
 
-	private static final String GIT_TRACE_PERFORMANCE = "GIT_TRACE_PERFORMANCE"; //$NON-NLS-1$
+	//private static final String GIT_TRACE_PERFORMANCE = "GIT_TRACE_PERFORMANCE"; //$NON-NLS-1$
 
 	private static final boolean performanceTrace = initPerformanceTrace();
 
 	private static boolean initPerformanceTrace() {
-		String val = System.getenv(GIT_TRACE_PERFORMANCE);
+		//Comment out for SourceControl integration
+		/*String val = System.getenv(GIT_TRACE_PERFORMANCE);
 		if (val == null) {
 			val = System.getenv(GIT_TRACE_PERFORMANCE);
 		}
 		if (val != null) {
 			return Boolean.valueOf(val).booleanValue();
-		}
+		}*/
 		return false;
 	}
 
